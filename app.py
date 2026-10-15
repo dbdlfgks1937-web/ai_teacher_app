@@ -45,7 +45,7 @@ if "worksheet_detail" not in st.session_state: st.session_state.worksheet_detail
 if "quiz_detail" not in st.session_state: st.session_state.quiz_detail = None
 if "final_subject" not in st.session_state: st.session_state.final_subject = "공통국어"
 
-# 🌟 서명 완벽 저장을 위한 전용 세션(금고) 추가
+# 🌟 서명 완벽 저장을 위한 전용 세션(단방향 금고) 추가
 if "canvas_key" not in st.session_state: st.session_state.canvas_key = 0
 if "safe_signature" not in st.session_state: st.session_state.safe_signature = None
 
@@ -327,7 +327,7 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (접근 에러 완벽 차단 & 실시간 금고 백업 적용)
+    # 🌟 [메뉴 5] 등록부 (완벽한 단방향 금고 백업 로직)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
@@ -365,35 +365,33 @@ with col_main:
             key=f"sig_canvas_{st.session_state.canvas_key}"
         )
         
-        # 🌟 에러 차단막(try-except) 속에서 그리는 즉시 금고(safe_signature)에 저장해 둡니다.
-        try:
-            if canvas_result is not None:
-                img_data = canvas_result.image_data
-                if img_data is not None:
-                    st.session_state.safe_signature = img_data.copy()
-        except Exception:
-            pass
+        # 🌟 [가장 핵심적인 해결책] 캔버스에 선(objects)이 그려진 상태일 때만 금고에 저장합니다!
+        # 제출 버튼을 눌러서 캔버스가 0.1초 하얗게 증발해도 선이 없으므로 금고에 있는 진짜 서명은 절대 지워지지 않습니다.
+        if canvas_result is not None and canvas_result.json_data is not None:
+            objects = canvas_result.json_data.get("objects", [])
+            if len(objects) > 0 and canvas_result.image_data is not None:
+                st.session_state.safe_signature = canvas_result.image_data.copy()
 
         if st.button("✅ 서명 완료 및 제출", type="primary", use_container_width=True):
             if not in_name:
                 st.warning("이름을 입력하세요.")
+            elif st.session_state.safe_signature is None:
+                st.warning("⚠️ 서명을 먼저 그려주세요!")
             else:
                 sig_base64 = ""
+                # 금고에 안전하게 보관된 서명을 꺼내서 무조건 저장합니다.
+                img_array = st.session_state.safe_signature
                 
-                # 🌟 제출 버튼을 누를 때 캔버스가 초기화되더라도, 금고에 백업된 이미지를 무조건 빼서 사용합니다.
-                img_array = st.session_state.get('safe_signature')
-                
-                if img_array is not None:
-                    try:
-                        img_pil = Image.fromarray(img_array.astype('uint8'), 'RGBA')
-                        img_rgb = Image.new("RGB", img_pil.size, (255, 255, 255))
-                        img_rgb.paste(img_pil, mask=img_pil.split()[3])
-                        
-                        buffered = io.BytesIO()
-                        img_rgb.save(buffered, format="PNG")
-                        sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                    except Exception:
-                        pass
+                try:
+                    img_pil = Image.fromarray(img_array.astype('uint8'), 'RGBA')
+                    img_rgb = Image.new("RGB", img_pil.size, (255, 255, 255))
+                    img_rgb.paste(img_pil, mask=img_pil.split()[3])
+                    
+                    buffered = io.BytesIO()
+                    img_rgb.save(buffered, format="PNG")
+                    sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                except Exception:
+                    pass
                 
                 new_row = pd.DataFrame([{
                     "연번": len(st.session_state.registry_df)+1, 
@@ -406,9 +404,9 @@ with col_main:
                     "등록 일시": datetime.now().strftime("%m-%d %H:%M")
                 }])
                 st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
-                st.success(f"{in_name} 선생님의 서명이 성공적으로 등록되었습니다!")
+                st.success(f"{in_name} 선생님의 손글씨 서명이 완벽하게 등록되었습니다!")
                 
-                # 다음 사람을 위해 금고를 비우고 캔버스를 리셋
+                # 다음 사람을 위해 금고와 캔버스 리셋
                 st.session_state.safe_signature = None
                 st.session_state.canvas_key += 1
                 time.sleep(0.5)
@@ -470,10 +468,10 @@ with col_main:
                 st.download_button("🖨️ 등록부 인쇄 (손글씨 포함 HTML)", data=html_registry.encode('utf-8'), file_name=f"등록부_{selected_training}.html", mime="text/html", type="primary", use_container_width=True)
 
 # ==========================================
-# [오른쪽 20%] 🌟 API 키 및 유용한 정보 
+# [오른쪽 20%] 🌟 API 키 및 유용한 정보
 # ==========================================
 with col_info:
-    # 🌟 API 키 입력란 (대문짝만한 공간 최상단 배치)
+    # 🌟 API 키 입력란 (우측 상단 대문짝 배치 유지)
     st.markdown("<div style='background-color:#e3f2fd; padding: 15px; border-radius: 10px; border: 2px solid #2196f3; margin-bottom: 20px;'>", unsafe_allow_html=True)
     st.markdown("<h4 style='margin-top:0; color:#0d47a1; text-align:center;'>🔑 API 키 입력 (필수)</h4>", unsafe_allow_html=True)
     st.session_state.api_key = st.text_input("Gemini API 키", type="password", placeholder="여기에 키를 붙여넣으세요", label_visibility="collapsed")
