@@ -109,7 +109,10 @@ with col_main:
     # --------------------------------------------------------------------------------
     if st.session_state.current_page == "과정안 생성":
         st.subheader("📝 개념기반 공개수업 마스터플랜 생성기")
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "📝 4. 활동지 생성", "❓ 5. 평가 출제", "🖨️ 6. 인쇄/추출"])
+        
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+            "⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "📝 4. 활동지 생성", "❓ 5. 평가 출제", "🖨️ 6. 인쇄/추출"
+        ])
         
         with tab1:
             st.markdown("#### ⚙️ 수업 기본 정보 세팅")
@@ -224,7 +227,7 @@ with col_main:
             # 1. 과정안 HTML
             if st.session_state.selected_session_detail:
                 d = st.session_state.selected_session_detail
-                html_plan = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; line-height: 1.5; }} table {{ width: 100%; border-collapse: collapse; margin-bottom: 25px; }} th, td {{ border: 1px solid #000; padding: 8px; }} th {{ background-color: #f2f2f2; text-align: center; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #1a73e8; color: white; text-align: center; cursor: pointer; border-radius: 5px; border:none; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 지도안 인쇄하기</button><h1 style="text-align:center;">{sub}과 교수·학습 과정안</h1><table><tr><th>일 시</th><td>{st.session_state.get('class_date','')}</td><th>장 소</th><td>{st.session_state.get('class_location','')}</td></tr><tr><th>대 상</th><td>{st.session_state.get('target_students','')}</td><th>지도 교사</th><td>{teacher_display}</td></tr></table><h3>| 1. 수업 개요 및 의도</h3><p>{d.get('overview','')}</p><h3>| 2. CBI 목표</h3><ul><li><b>거시/미시:</b> {d.get('macro','')} / {d.get('micro','')}</li><li><b>목표:</b> {d.get('objective','')}</li><li><b>일반화:</b> {d.get('big_idea','')}</li></ul><h3>| 3. 전개</h3><table><tr><th width="10%">단계</th><th width="10%">시량</th><th width="60%">교수·학습 활동</th><th width="20%">유의점</th></tr><tr><td align="center">도 입</td><td align="center">{d.get('intro_time','')}</td><td>{d.get('intro_act','').replace(chr(10), '<br>')}</td><td>{d.get('intro_note','').replace(chr(10), '<br>')}</td></tr><tr><td align="center">전 개</td><td align="center">{d.get('dev_time','')}</td><td>{d.get('dev_act','').replace(chr(10), '<br>')}</td><td>{d.get('dev_note','').replace(chr(10), '<br>')}</td></tr><tr><td align="center">정 리</td><td align="center">{d.get('conc_time','')}</td><td>{d.get('conc_act','').replace(chr(10), '<br>')}</td><td>{d.get('conc_note','').replace(chr(10), '<br>')}</td></tr></table></body></html>"""
+                html_plan = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>공개수업 지도안</title><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; line-height: 1.5; }} table {{ width: 100%; border-collapse: collapse; margin-bottom: 25px; }} th, td {{ border: 1px solid #000; padding: 8px; }} th {{ background-color: #f2f2f2; text-align: center; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #1a73e8; color: white; text-align: center; cursor: pointer; border-radius: 5px; border:none; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 지도안 인쇄하기</button><h1 style="text-align:center;">{sub}과 교수·학습 과정안</h1><table><tr><th>일 시</th><td>{st.session_state.get('class_date','')}</td><th>장 소</th><td>{st.session_state.get('class_location','')}</td></tr><tr><th>대 상</th><td>{st.session_state.get('target_students','')}</td><th>지도 교사</th><td>{teacher_display}</td></tr></table><h3>| 1. 수업 개요 및 의도</h3><p>{d.get('overview','')}</p><h3>| 2. CBI 목표</h3><ul><li><b>거시/미시:</b> {d.get('macro','')} / {d.get('micro','')}</li><li><b>목표:</b> {d.get('objective','')}</li><li><b>일반화:</b> {d.get('big_idea','')}</li></ul><h3>| 3. 전개</h3><table><tr><th width="10%">단계</th><th width="10%">시량</th><th width="60%">교수·학습 활동</th><th width="20%">유의점</th></tr><tr><td align="center">도 입</td><td align="center">{d.get('intro_time','')}</td><td>{d.get('intro_act','').replace(chr(10), '<br>')}</td><td>{d.get('intro_note','').replace(chr(10), '<br>')}</td></tr><tr><td align="center">전 개</td><td align="center">{d.get('dev_time','')}</td><td>{d.get('dev_act','').replace(chr(10), '<br>')}</td><td>{d.get('dev_note','').replace(chr(10), '<br>')}</td></tr><tr><td align="center">정 리</td><td align="center">{d.get('conc_time','')}</td><td>{d.get('conc_act','').replace(chr(10), '<br>')}</td><td>{d.get('conc_note','').replace(chr(10), '<br>')}</td></tr></table></body></html>"""
                 with c_a: st.download_button("📥 1. 지도안", data=html_plan.encode('utf-8'), file_name="지도안.html", mime="text/html", type="primary", use_container_width=True)
 
             # 2. 활동지 HTML
@@ -329,7 +332,7 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (완벽한 손글씨 캔버스 복구 및 예외 처리 강화)
+    # 🌟 [메뉴 5] 등록부 (접근 에러 원천 차단 및 빈 캔버스 방지 로직 적용)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
@@ -356,7 +359,7 @@ with col_main:
         
         st.write("✍️ **서명 (필수)** - 마우스나 스마트폰 터치로 직접 서명해 주세요.")
         
-        # 🌟 캔버스 컴포넌트 복구
+        # 🌟 손글씨 캔버스 복구
         canvas_result = st_canvas(
             stroke_width=3, 
             stroke_color="#000000", 
@@ -373,39 +376,44 @@ with col_main:
         if st.button("✅ 서명 완료 및 제출", type="primary", use_container_width=True):
             if not in_name:
                 st.warning("이름을 입력하세요.")
-            elif canvas_result.image_data is None:
-                st.warning("⚠️ 서명이 서버로 전송 중입니다. 1초 뒤에 다시 버튼을 눌러주세요.")
             else:
+                is_valid_sig = False
+                sig_base64 = ""
+                
+                # 🌟 에러 원천 차단: image_data 접근 자체를 try-except로 감싸서 안전하게 확인합니다.
                 try:
-                    img_array = canvas_result.image_data.astype('uint8')
-                    
-                    # 🌟 안전장치: 빈 캔버스를 꼼수 제출하지 못하게 방지
-                    if np.sum(img_array[:, :, 3]) == 0:
-                        st.warning("⚠️ 캔버스가 비어 있습니다. 진짜 펜글씨처럼 서명을 그려주세요!")
-                    else:
-                        # 투명 배경을 흰색으로 덧대어 깨지지 않는 PNG 생성
-                        img_rgba = Image.fromarray(img_array, 'RGBA')
-                        img_rgb = Image.new("RGB", img_rgba.size, (255, 255, 255))
-                        img_rgb.paste(img_rgba, mask=img_rgba.split()[3])
+                    if canvas_result is not None:
+                        # 접근 시 에러가 나면 except로 바로 빠집니다.
+                        img_array = canvas_result.image_data.astype('uint8')
                         
-                        buffered = io.BytesIO()
-                        img_rgb.save(buffered, format="PNG")
-                        sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                        
-                        new_row = pd.DataFrame([{
-                            "연번": len(st.session_state.registry_df)+1, 
-                            "연수명": selected_training, 
-                            "소속": in_dept, 
-                            "직위": in_pos, 
-                            "이름": in_name, 
-                            "서명 상태": "✅ 완료", 
-                            "서명 이미지": sig_base64, 
-                            "등록 일시": datetime.now().strftime("%m-%d %H:%M")
-                        }])
-                        st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
-                        st.success(f"{in_name} 선생님의 손글씨 서명이 완벽하게 등록되었습니다!")
-                except Exception as e:
-                    st.error(f"서명 처리 중 에러가 발생했습니다: {str(e)}")
+                        # 투명도(알파) 채널에 픽셀이 있는지 확인하여 빈 캔버스 방지
+                        if np.sum(img_array[:, :, 3]) > 0: 
+                            is_valid_sig = True
+                            img_rgba = Image.fromarray(img_array, 'RGBA')
+                            img_rgb = Image.new("RGB", img_rgba.size, (255, 255, 255))
+                            img_rgb.paste(img_rgba, mask=img_rgba.split()[3])
+                            
+                            buffered = io.BytesIO()
+                            img_rgb.save(buffered, format="PNG")
+                            sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                except Exception:
+                    pass
+                
+                if not is_valid_sig:
+                    st.warning("⚠️ 서명이 인식되지 않았거나 전송 중입니다. 서명을 캔버스에 그린 후 1초 뒤에 다시 눌러주세요!")
+                else:
+                    new_row = pd.DataFrame([{
+                        "연번": len(st.session_state.registry_df)+1, 
+                        "연수명": selected_training, 
+                        "소속": in_dept, 
+                        "직위": in_pos, 
+                        "이름": in_name, 
+                        "서명 상태": "✅ 완료", 
+                        "서명 이미지": sig_base64, 
+                        "등록 일시": datetime.now().strftime("%m-%d %H:%M")
+                    }])
+                    st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
+                    st.success(f"{in_name} 선생님의 손글씨 서명이 완벽하게 등록되었습니다!")
                     
         st.markdown("</div>", unsafe_allow_html=True)
         
