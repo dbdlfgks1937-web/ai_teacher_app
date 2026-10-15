@@ -2,11 +2,12 @@ import streamlit as st
 import pdfplumber
 import json
 import io
+import time
 import pandas as pd
 from datetime import datetime
 from docx import Document
 from streamlit_drawable_canvas import st_canvas
-import requests  # 외부 라이브러리 충돌을 원천 차단하는 표준 통신 모듈
+from google import genai  # 구글 최신 공식 SDK
 
 # ---------------------------------------------------------
 # 1. 화면 기본 설정 & 외부 CSS 파일 불러오기
@@ -41,30 +42,29 @@ st.title("✨ AI 맞춤형 교무·학습 지원 시스템")
 st.write("---")
 
 # ==========================================
-# 🌟 [1번 방식] 순수 REST API 직접 호출 함수 (v1 / gemini-1.5-flash)
+# 🌟 [최신 3.8-flash 적용 & 503 과부하 방어 로직]
 # ==========================================
-def call_gemini_direct(api_key, prompt):
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
-    headers = {'Content-Type': 'application/json'}
-    data = {
-        "contents": [{"parts": [{"text": prompt}]}]
-    }
+def call_gemini_robust(api_key, prompt, max_retries=3):
+    client = genai.Client(api_key=api_key)
     
-    response = requests.post(url, headers=headers, json=data)
-    
-    if response.status_code == 200:
-        result = response.json()
+    for attempt in range(max_retries):
         try:
-            return result['candidates'][0]['content']['parts'][0]['text']
-        except (KeyError, IndexError) as e:
-            raise Exception(f"응답 데이터 파싱 오류: {result}")
-    else:
-        # 구글 서버에서 반환하는 정확한 에러 메시지를 함께 출력합니다.
-        try:
-            err_msg = response.json().get('error', {}).get('message', response.text)
-        except:
-            err_msg = response.text
-        raise Exception(f"Google API 오류 ({response.status_code}): {err_msg}")
+            # 첫 번째 사진에서 구글이 요구한 최신 표준 모델 적용
+            response = client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=prompt,
+            )
+            return response.text
+            
+        except Exception as e:
+            err_msg = str(e)
+            # 503 에러(서버 과부하) 발생 시 에러를 띄우지 않고 2초 대기 후 자동 재시도
+            if "503" in err_msg or "UNAVAILABLE" in err_msg:
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                    continue
+            # 다른 에러거나 재시도 횟수를 넘기면 에러 출력
+            raise Exception(f"AI 통신 오류: {err_msg}")
 
 # ---------------------------------------------------------
 # 3. 화면 3분할 (2:6:2 비율)
@@ -99,23 +99,9 @@ with col_menu:
     st.markdown("##### ⚙️ 기본 설정")
     selected_subject = st.selectbox("📚 담당 과목", ["공통국어", "윤리와 사상", "생활과 윤리", "기타"], label_visibility="collapsed")
     
-    tooltip_html = """
-    <div style='margin-bottom: 5px;'>
-        <span style='font-size: 14px; font-weight: 600; color: #495057;'>🔑 Gemini API 키</span>
-        <div class="tooltip">?
-            <span class="tooltiptext">
-                <strong>[API 키 발급 및 보안 안내]</strong><br><br>
-                • <strong>발급 방법:</strong> Google AI Studio 접속 > 'Get API key' 클릭 > 복사<br>
-                • <strong>왜 필요한가요?</strong> 선생님만의 전용 회선으로 AI를 호출하여 대기 시간 없이 빠르고 정확한 결과를 얻기 위함입니다.<br>
-                • <strong>보안:</strong> 입력하신 키는 이 브라우저를 닫으면 <strong>즉시 사라지며</strong>, 외부에 절대 유출되지 않습니다.
-            </span>
-        </div>
-    </div>
-    """
-    st.markdown(tooltip_html, unsafe_allow_html=True)
-    st.session_state.api_key = st.text_input("Gemini API 키", type="password", label_visibility="collapsed")
+    st.session_state.api_key = st.text_input("🔑 Gemini API 키 입력", type="password")
     
-    st.markdown("<br><p style='font-size:11px; color:#2b8a3e; font-weight:bold;'>🟢 시스템 상태: 순수 표준 REST API 연동됨</p>", unsafe_allow_html=True)
+    st.markdown("<br><p style='font-size:11px; color:#2b8a3e; font-weight:bold;'>🟢 gemini-3.8-flash (트래픽 방어 모드)</p>", unsafe_allow_html=True)
 
 # ==========================================
 # [가운데 60%] 메인 작업 영역
@@ -130,7 +116,7 @@ with col_main:
         with tab1:
             if uploaded_file and st.session_state.api_key:
                 if st.button("🚀 AI 분석 시작", type="primary"):
-                    with st.spinner("표준 회선을 통해 교과서를 꼼꼼히 분석 중입니다..."):
+                    with st.spinner("최신 AI가 교과서를 꼼꼼히 분석 중입니다 (서버 혼잡 시 약간의 시간이 소요될 수 있습니다)..."):
                         text_data = ""
                         with pdfplumber.open(uploaded_file) as pdf:
                             for page in pdf.pages:
@@ -140,14 +126,14 @@ with col_main:
                         
                         prompt1 = f"당신은 고등학교 {selected_subject} 교육 전문가입니다. 다음 교과서 텍스트를 분석해 최적 총 차시를 설계하세요. 반드시 JSON 배열 형식으로만 답변하세요 (키: session, type, title, desc). [내용] {text_data}"
                         try:
-                            res1_text = call_gemini_direct(st.session_state.api_key, prompt1)
+                            res1_text = call_gemini_robust(st.session_state.api_key, prompt1)
                             clean_txt = res1_text.replace("```json", "").replace("```", "").strip()
                             st.session_state.proposed_sessions = json.loads(clean_txt)
                             st.success("분석 완료! 2단계 탭으로 이동하세요.")
                         except Exception as e:
-                            st.error(f"오류가 발생했습니다: {e}")
+                            st.error(str(e))
             else:
-                st.info("좌측에 API 키를 넣고 교과서 PDF를 업로드해 주세요.")
+                st.info("좌측에 개인 API 키를 넣고 교과서 PDF를 업로드해 주세요.")
                 
         with tab2:
             if st.session_state.proposed_sessions:
@@ -158,13 +144,13 @@ with col_main:
                     with st.spinner("상세 과정안을 작성 중입니다..."):
                         prompt2 = f"당신은 고등학교 {selected_subject} 교육 전문가입니다. 차시: {chosen_session['session']} / 주제: {chosen_session['title']}. 반드시 JSON 형식(unit, objectives, intro_act, dev_act, conc_act)으로 답변하세요. [내용] {st.session_state.extracted_text}"
                         try:
-                            res2_text = call_gemini_direct(st.session_state.api_key, prompt2)
+                            res2_text = call_gemini_robust(st.session_state.api_key, prompt2)
                             clean_txt2 = res2_text.replace("```json", "").replace("```", "").strip()
                             st.session_state.selected_session_detail = json.loads(clean_txt2)
                             st.session_state.selected_session_detail.update({'type': chosen_session['type'], 'session': chosen_session['session']})
                             st.success("과정안 완성! 3단계 탭으로 이동하세요.")
                         except Exception as e:
-                            st.error(f"오류가 발생했습니다: {e}")
+                            st.error(str(e))
             else:
                 st.warning("1단계 분석을 완료해 주세요.")
                 
@@ -204,10 +190,10 @@ with col_main:
                     plan_text = json.dumps(st.session_state.selected_session_detail, ensure_ascii=False)
                     prompt3 = f"당신은 고등학교 {selected_subject} 수석 교사입니다. 다음 교수학습 과정안을 바탕으로 실제 수업에 활용할 3가지 보조 자료를 마크다운 형식으로 작성하세요. 1. 퀴즈앤/패들렛용 핵심 질문 3가지 2. 수행평가/탐구 활동지 3단계 채점 루브릭 (상/중/하) 3. 캔바(Canva) 수업 슬라이드 구성안 (4~5장 대본). [과정안 데이터] {plan_text}"
                     try:
-                        res3_text = call_gemini_direct(st.session_state.api_key, prompt3)
+                        res3_text = call_gemini_robust(st.session_state.api_key, prompt3)
                         st.session_state.extra_materials = res3_text
                     except Exception as e:
-                        st.error(f"오류가 발생했습니다: {e}")
+                        st.error(str(e))
                         
             if st.session_state.extra_materials:
                 st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
@@ -234,12 +220,12 @@ with col_main:
                 with st.spinner("NEIS 양식에 맞게 문장을 작성 중입니다..."):
                     prompt = f"당신은 고등학교 {selected_subject} 교사입니다. 학생 '{stu_name}'의 세특을 작성합니다. 수준: {stu_level} / 관찰: {stu_activity}. 명사형 종결어미(~함, ~임)를 사용하고, 500자 내외로 전문적이고 긍정적으로 작성하세요."
                     try:
-                        res_text = call_gemini_direct(st.session_state.api_key, prompt)
+                        res_text = call_gemini_robust(st.session_state.api_key, prompt)
                         st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
                         st.markdown(res_text)
                         st.markdown("</div>", unsafe_allow_html=True)
                     except Exception as e:
-                        st.error(f"오류가 발생했습니다: {e}")
+                        st.error(str(e))
             else:
                 st.warning("학생 이름과 활동 내용을 입력해 주세요.")
 
@@ -257,12 +243,12 @@ with col_main:
                 with st.spinner("정중한 문구로 변환 중입니다..."):
                     prompt = f"당신은 다정하고 꼼꼼한 고등학교 담임교사입니다. 내용을 학부모님과 학생 단체 문자로 보낼 수 있게 알림장 형태로 다듬어주세요. 전달 내용: {msg_context}. 인사말로 시작해 끝맺음 인사를 포함하고 줄바꿈과 이모지를 적절히 사용하세요."
                     try:
-                        res_text = call_gemini_direct(st.session_state.api_key, prompt)
+                        res_text = call_gemini_robust(st.session_state.api_key, prompt)
                         st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
                         st.markdown(res_text)
                         st.markdown("</div>", unsafe_allow_html=True)
                     except Exception as e:
-                        st.error(f"오류가 발생했습니다: {e}")
+                        st.error(str(e))
             else:
                 st.warning("전달할 내용을 입력해 주세요.")
 
@@ -282,52 +268,4 @@ with col_main:
         st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
         selected_training = st.selectbox("📌 연수명 선택", st.session_state.training_list)
         
-        c1, c2, c3 = st.columns(3)
-        with c1: in_dept = st.text_input("소속")
-        with c2: in_pos = st.text_input("직위")
-        with c3: in_name = st.text_input("이름")
-        
-        st.write("✍️ **서명** (아래 캔버스에 서명하세요)")
-        st_canvas(stroke_width=2, stroke_color="#000", background_color="#f0f0f0", height=100, width=400, drawing_mode="freedraw", key="sig")
-        
-        if st.button("✅ 서명 완료 및 제출", type="primary", use_container_width=True):
-            if in_name:
-                new_row = pd.DataFrame([{"연번": len(st.session_state.registry_df)+1, "연수명": selected_training, "소속": in_dept, "직위": in_pos, "이름": in_name, "서명 상태": "✅ 완료", "등록 일시": datetime.now().strftime("%m-%d %H:%M")}])
-                st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
-                st.success(f"{in_name}님 등록 완료!")
-            else:
-                st.warning("이름을 입력하세요.")
-        st.markdown("</div>", unsafe_allow_html=True)
-                
-        st.write("---")
-        st.dataframe(st.session_state.registry_df, hide_index=True, use_container_width=True)
-        if not st.session_state.registry_df.empty:
-            st.download_button("📥 엑셀(CSV) 다운로드", data=st.session_state.registry_df.to_csv(index=False, encoding='utf-8-sig'), file_name="등록부.csv", mime="text/csv")
-
-    else:
-        st.subheader(st.session_state.current_page)
-        st.write("🚀 이 기능은 곧 채워질 예정입니다!")
-
-# ==========================================
-# [오른쪽 20%] 유용한 교육/생활 정보
-# ==========================================
-with col_info:
-    st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
-    st.markdown("#### 🌤️ 오늘의 날씨")
-    st.markdown("**전남 광양시 중마동**")
-    st.markdown("<h2 style='margin:0; color:#ffb3c6;'>18°C / 맑음</h2>", unsafe_allow_html=True)
-    st.caption("미세먼지: 좋음 🟢 | 강수확률: 0%")
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
-    st.markdown("#### 💡 에듀테크 꿀팁")
-    st.markdown("**Canva(캔바) 업데이트**")
-    st.write("새로운 '매직스튜디오' 기능으로 텍스트만 입력하면 수업용 슬라이드 배경이 자동 생성됩니다.")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
-    st.markdown("#### 📅 주요 일정")
-    st.write("• **10/14:** 국어교육연구회 공개수업")
-    st.write("• **10월 3주차:** 학생 세특 초안 작성")
-    st.write("• **1월:** 나고야 가족 겨울 여행 준비")
-    st.markdown("</div>", unsafe_allow_html=True)
+        c1, c2, c3 = st
