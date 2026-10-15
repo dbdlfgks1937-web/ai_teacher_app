@@ -87,7 +87,7 @@ with col_menu:
     st.markdown("<div class='menu-title'>📝 평가/기록 지원</div>", unsafe_allow_html=True)
     nav_button("💡 학생 세특 초안", "세특 초안")
     
-    st.markdown("<div class='menu-title'>🛡️ 교권/상담 지원 (New)</div>", unsafe_allow_html=True)
+    st.markdown("<div class='menu-title'>🛡️ 교권/상담 지원</div>", unsafe_allow_html=True)
     nav_button("🛡️ 사안/민원 쉴드", "사안 보고")
     
     st.markdown("<div class='menu-title'>🏫 행정/학급 운영</div>", unsafe_allow_html=True)
@@ -95,9 +95,20 @@ with col_menu:
     nav_button("💌 학급 알림장/문자", "알림장")
     nav_button("📋 온라인 등록부", "등록부")
 
+    # 🌟 [개선] 전역 API 키 설정 (좌측 고정)
+    st.write("---")
+    st.markdown("##### 🔑 필수 API 설정")
+    st.caption("※ 이 앱의 모든 AI 기능을 사용하려면 반드시 입력해야 합니다.")
+    st.session_state.api_key = st.text_input("Gemini API 키 입력", type="password", placeholder="여기에 키를 붙여넣으세요")
+    
+    if not st.session_state.api_key:
+        st.error("👈 AI 작동을 위해 키를 넣어주세요.")
+    else:
+        st.success("🟢 AI 연동 준비 완료!")
+
 with col_main:
     # --------------------------------------------------------------------------------
-    # [메뉴 1] 과정안 생성기 (CSV 추출 및 인쇄 페이지 나눔 적용)
+    # [메뉴 1] 과정안 생성기
     # --------------------------------------------------------------------------------
     if st.session_state.current_page == "과정안 생성":
         st.subheader("📝 개념기반 공개수업 마스터플랜 생성기")
@@ -110,6 +121,8 @@ with col_main:
         # [탭 1] 기본 설정
         with tab1:
             st.markdown("#### ⚙️ 수업 기본 정보 세팅")
+            st.caption("여기서 입력하신 정보는 인쇄될 지도안과 학생 활동지에 자동으로 깔끔하게 인쇄됩니다.")
+            
             c1, c2 = st.columns(2)
             with c1:
                 subj_list = ["공통국어", "윤리와 사상", "생활과 윤리", "➕ 직접 입력 (새 과목 추가)"]
@@ -126,9 +139,6 @@ with col_main:
                 st.text_input("👨‍🏫 지도 교사", placeholder="예) 유일한", key="teacher_name")
                 st.text_input("👥 수업 대상", placeholder="예) 1학년 6반 학생", key="target_students")
                 st.text_input("🏫 수업 장소", placeholder="예) 1학년 6반 교실", key="class_location")
-                
-            st.write("---")
-            st.text_input("🔑 Gemini API 키", type="password", placeholder="발급받은 API 키를 입력하세요", key="api_key")
                 
             st.write("---")
             st.markdown("#### 📄 교과서 PDF 업로드")
@@ -154,8 +164,10 @@ with col_main:
                             st.success("단원 분석 완료! 3단계 탭으로 이동하세요.")
                         except Exception as e:
                             st.error(str(e))
+            elif not st.session_state.api_key:
+                st.error("👈 좌측 메뉴 하단에 API 키를 먼저 입력해 주세요.")
             else:
-                st.warning("1단계 탭에서 API 키를 입력하고 교과서 PDF를 업로드해 주세요.")
+                st.warning("1단계 탭에서 교과서 PDF를 업로드해 주세요.")
                 
         # [탭 3] 과정안 생성
         with tab3:
@@ -252,11 +264,9 @@ with col_main:
                 html_work = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; }} .box {{ border: 1px dashed #333; padding: 15px; margin-bottom: 10px; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #2b8a3e; color: white; cursor: pointer; border-radius: 5px; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 활동지 인쇄하기</button><div style="border: 2px solid #000; padding: 15px; border-radius: 8px;"><h1 style="text-align:center; margin:0;">[탐구 활동지] {w.get('title','')}</h1><div style="text-align:right; font-weight:bold; margin-top:10px;">{info_line}</div><div><b>[거시/미시]</b> {d.get('macro','')} / {d.get('micro','')}</div><div><b>[목표]</b> {d.get('objective','')}</div><div><b>[핵심 아이디어]</b> {d.get('big_idea','')}</div></div><h3>{w.get('act1_title','')}</h3><div class="box">{w.get('act1_desc','').replace(chr(10), '<br>')}</div><h3>{w.get('act2_title','')}</h3><div class="box"><b>▶ 나의 질문: </b></div><h3>{w.get('act3_title','')}</h3><div class="box" style="min-height:100px;"></div><h3>{w.get('wrap_up','[마무리]')}</h3></body></html>"""
                 with c_b: st.download_button("📥 2. 활동지 (HTML)", data=html_work.encode('utf-8'), file_name="활동지.html", mime="text/html", type="primary", use_container_width=True)
 
-            # 3. 형성평가지 HTML (페이지 나누기 적용) & 4. 퀴즈앤 CSV 생성
+            # 3. 형성평가지 HTML & 4. 퀴즈앤 CSV 생성
             if st.session_state.quiz_detail:
                 q = st.session_state.quiz_detail
-                
-                # HTML용 조립
                 ox_html = "".join([f"<li>{item['q']} ( O , X )</li>" for item in q.get('ox_quiz', [])])
                 init_html = "".join([f"<li>{item['q']} ( 정답: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; )</li>" for item in q.get('initial_quiz', [])])
                 vocab_html = "".join([f"<li>{item['q']}<br>( 정답: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; )</li>" for item in q.get('vocab_quiz', [])])
@@ -272,16 +282,10 @@ with col_main:
                 for item in q.get('mcq', []): ans_html += f"<li><b>[객관식]</b> 정답: {item['a']} - {item.get('exp','')}</li>"
                 ans_html += "</ul>"
 
-                # 🌟 페이지 넘김(page-break) CSS 추가
                 html_quiz = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #f59f00; color: white; text-align: center; cursor: pointer; border-radius: 5px; }} .page-break {{ page-break-before: always; margin-top: 40px; padding-top: 20px; border-top: 2px dashed #000; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 평가 및 해설지 인쇄</button><div style="border:2px solid #000; padding:15px; text-align:center; border-radius:8px;"><h1 style="margin:0;">[형성평가] {q.get('title', '')}</h1><div style="text-align:right; font-weight:bold; margin-top:10px;">{info_line}</div></div><h3>🎯 O/X 퀴즈</h3><ul>{ox_html}</ul><h3>🎯 초성 퀴즈</h3><ul>{init_html}</ul><h3>🎯 어휘 퀴즈</h3><ul>{vocab_html}</ul><h3>🎯 객관식 퀴즈</h3><ol>{mcq_html}</ol>
-                <!-- 다음 페이지로 넘어가는 정답지 -->
-                <div class="page-break">
-                    <h2 style="color: #e03131;">[교사용] 정답 및 해설 (여기서부터 뒷장으로 인쇄됩니다)</h2>
-                    {ans_html}
-                </div></body></html>"""
+                <div class="page-break"><h2 style="color: #e03131;">[교사용] 정답 및 해설</h2>{ans_html}</div></body></html>"""
                 with c_c: st.download_button("📥 3. 평가/해설 (HTML)", data=html_quiz.encode('utf-8'), file_name="형성평가.html", mime="text/html", type="primary", use_container_width=True)
 
-                # 🌟 퀴즈앤(QuizN) 일괄 등록용 CSV 변환 로직
                 csv_rows = []
                 for item in q.get('ox_quiz', []): csv_rows.append({"유형": "OX", "문제": item['q'], "정답": item['a'], "보기1": "O", "보기2": "X", "보기3": "", "보기4": "", "해설": item.get('exp','')})
                 for item in q.get('initial_quiz', []): csv_rows.append({"유형": "단답형", "문제": item['q'], "정답": item['a'], "보기1": "", "보기2": "", "보기3": "", "보기4": "", "해설": item.get('exp','')})
@@ -289,17 +293,15 @@ with col_main:
                 for item in q.get('mcq', []):
                     opts = item.get('options', ["","","",""])
                     csv_rows.append({"유형": "객관식", "문제": item['q'], "정답": item['a'], "보기1": opts[0] if len(opts)>0 else "", "보기2": opts[1] if len(opts)>1 else "", "보기3": opts[2] if len(opts)>2 else "", "보기4": opts[3] if len(opts)>3 else "", "해설": item.get('exp','')})
-                
                 df_quiz = pd.DataFrame(csv_rows)
-                with c_d: st.download_button("📥 4. 퀴즈앤 업로드 (CSV)", data=df_quiz.to_csv(index=False, encoding='utf-8-sig'), file_name="퀴즈앤_일괄등록.csv", mime="text/csv", type="secondary", use_container_width=True)
+                with c_d: st.download_button("📥 4. 퀴즈앤 (CSV)", data=df_quiz.to_csv(index=False, encoding='utf-8-sig'), file_name="퀴즈앤_일괄등록.csv", mime="text/csv", type="secondary", use_container_width=True)
 
     # --------------------------------------------------------------------------------
-    # [메뉴 2] 행사 기획 마스터 (신규)
+    # [메뉴 2] 행사 기획 마스터
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "행사 기획":
         st.subheader("🎉 대형 행사 시나리오 & 기안문 자동 생성기")
         st.info("입력하신 행사 정보를 바탕으로 완벽한 사회자 대본과 내부 결재용 기안문 초안을 작성합니다.")
-        api_key_check = st.session_state.get("api_key", "")
         
         col1, col2 = st.columns(2)
         with col1: event_name = st.text_input("행사명", placeholder="예) 2026학년도 교실로 찾아가는 교육과정 박람회")
@@ -307,12 +309,12 @@ with col_main:
         event_purpose = st.text_area("행사 목적 및 주요 식순(키워드)", placeholder="예) 개회식, 교장선생님 인사말, 학생 서포터즈 발대식, 부스 투어")
         
         if st.button("🎉 공식 기안문 & 대본 생성하기", type="primary"):
-            if not api_key_check: st.error("1단계 [기본 설정] 탭에서 API 키를 입력해 주세요.")
+            if not st.session_state.api_key: st.error("👈 좌측 메뉴 하단에 API 키를 먼저 입력해 주세요.")
             elif event_name and event_purpose:
                 with st.spinner("AI가 교무 행정 양식에 맞춰 완벽한 문서를 기안하고 있습니다..."):
-                    prompt = f"당신은 고등학교 부장교사입니다. 다음 행사를 기획합니다. 행사명: {event_name}, 일시/장소: {event_date}, 주요내용: {event_purpose}. \n두 가지를 작성하세요.\n1. 내부 결재용 기안문 초안 (목적, 방침, 세부 일정 포함)\n2. 행사 당일 사회자(진행자)의 매끄러운 오프닝 및 진행 시나리오 대본"
+                    prompt = f"당신은 고등학교 부장교사입니다. 행사명: {event_name}, 일시/장소: {event_date}, 주요내용: {event_purpose}. \n두 가지를 작성하세요.\n1. 내부 결재용 기안문 초안 (목적, 방침, 세부 일정 포함)\n2. 행사 당일 사회자(진행자)의 매끄러운 오프닝 및 진행 시나리오 대본"
                     try:
-                        res_text = call_gemini_robust(api_key_check, prompt)
+                        res_text = call_gemini_robust(st.session_state.api_key, prompt)
                         st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
                         st.markdown(res_text)
                         st.markdown("</div>", unsafe_allow_html=True)
@@ -321,22 +323,21 @@ with col_main:
                 st.warning("행사명과 주요 내용을 입력해 주세요.")
 
     # --------------------------------------------------------------------------------
-    # [메뉴 3] 사안/민원 쉴드 (신규)
+    # [메뉴 3] 사안/민원 쉴드
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "사안 보고":
         st.subheader("🛡️ 교권 보호 사안 보고서 & 상담 매뉴얼 생성기")
-        st.info("선생님의 감정 소모를 줄여드립니다. 메모하신 내용을 객관적인 육하원칙 공식 보고서와 정중한 학부모 대응 매뉴얼로 다듬어 드립니다.")
-        api_key_check = st.session_state.get("api_key", "")
+        st.info("선생님의 감정 소모를 줄여드립니다. 메모하신 내용을 객관적인 공식 보고서와 정중한 학부모 대응 매뉴얼로 다듬어 드립니다.")
         
         incident_memo = st.text_area("발생한 사안이나 민원 내용을 자유롭게 적어주세요.", placeholder="예) 수업 중에 A학생이 엎드려 자길래 깨웠더니 소리를 지르고 욕설을 함. 학부모는 오히려 교사가 강압적이었다며 항의 전화가 옴.", height=150)
         
         if st.button("🛡️ 객관적 보고서 및 대응 스크립트 생성", type="primary"):
-            if not api_key_check: st.error("1단계 [기본 설정] 탭에서 API 키를 입력해 주세요.")
+            if not st.session_state.api_key: st.error("👈 좌측 메뉴 하단에 API 키를 먼저 입력해 주세요.")
             elif incident_memo:
                 with st.spinner("AI가 감정을 배제하고 공식 보고서와 정중한 대응 매뉴얼을 작성 중입니다..."):
                     prompt = f"당신은 학교 폭력 및 교권 침해 대응 전문가입니다. 다음 교사의 메모를 바탕으로 두 가지를 작성하세요: {incident_memo}\n1. 육하원칙에 입각한 객관적이고 건조한 공식 사안 보고서 초안\n2. 학부모 상담 시 감정적 충돌을 피하면서 단호하고 정중하게 대응할 수 있는 교사용 전화/면담 스크립트"
                     try:
-                        res_text = call_gemini_robust(api_key_check, prompt)
+                        res_text = call_gemini_robust(st.session_state.api_key, prompt)
                         st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
                         st.markdown(res_text)
                         st.markdown("</div>", unsafe_allow_html=True)
@@ -354,26 +355,24 @@ with col_main:
         with col2: stu_level = st.selectbox("성취 수준", ["상 (우수함, 주도적)", "중 (성실함, 무난함)", "하 (노력 요함)"])
         stu_activity = st.text_area("주요 관찰 내용 및 활동 키워드", placeholder="예) 인공지능 윤리를 주제로 한 찬반 토론에서 사회자 역할을 맡아 갈등을 조율함.")
         if st.button("✨ 세특 초안 생성하기", type="primary"):
-            api_key_check = st.session_state.get("api_key", "")
-            if not api_key_check: st.error("1단계 [기본 설정] 탭에서 API 키를 입력해 주세요.")
+            if not st.session_state.api_key: st.error("👈 좌측 메뉴 하단에 API 키를 먼저 입력해 주세요.")
             elif stu_name and stu_activity:
                 with st.spinner("NEIS 양식에 맞게 문장을 작성 중입니다..."):
                     prompt = f"당신은 고등학교 교사입니다. 학생 '{stu_name}'의 세특을 작성합니다. 수준: {stu_level} / 관찰: {stu_activity}. 명사형 종결어미(~함, ~임)를 사용하고, 500자 내외로 전문적이고 긍정적으로 작성하세요."
                     try:
-                        st.markdown("<div class='custom-card'>" + call_gemini_robust(api_key_check, prompt) + "</div>", unsafe_allow_html=True)
+                        st.markdown("<div class='custom-card'>" + call_gemini_robust(st.session_state.api_key, prompt) + "</div>", unsafe_allow_html=True)
                     except Exception as e: st.error(str(e))
 
     elif st.session_state.current_page == "알림장":
         st.subheader("💌 학급 알림장/가정통신문 자동 생성기")
         msg_context = st.text_area("전달할 핵심 내용 입력", placeholder="예) 내일 체험학습 감. 도시락 꼭 싸오고 8시 반까지 운동장 집합.")
         if st.button("💌 알림장 문구 생성", type="primary"):
-            api_key_check = st.session_state.get("api_key", "")
-            if not api_key_check: st.error("1단계 [기본 설정] 탭에서 API 키를 입력해 주세요.")
+            if not st.session_state.api_key: st.error("👈 좌측 메뉴 하단에 API 키를 먼저 입력해 주세요.")
             elif msg_context:
                 with st.spinner("정중한 문구로 변환 중입니다..."):
                     prompt = f"다정하고 꼼꼼한 고등학교 담임교사입니다. 학부모님과 학생 단체 문자로 보낼 수 있게 알림장 형태로 다듬어주세요. 내용: {msg_context}."
                     try:
-                        st.markdown("<div class='custom-card'>" + call_gemini_robust(api_key_check, prompt) + "</div>", unsafe_allow_html=True)
+                        st.markdown("<div class='custom-card'>" + call_gemini_robust(st.session_state.api_key, prompt) + "</div>", unsafe_allow_html=True)
                     except Exception as e: st.error(str(e))
 
     elif st.session_state.current_page == "등록부":
