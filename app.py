@@ -27,7 +27,6 @@ if "extracted_text" not in st.session_state: st.session_state.extracted_text = "
 if "proposed_sessions" not in st.session_state: st.session_state.proposed_sessions = None
 if "selected_session_detail" not in st.session_state: st.session_state.selected_session_detail = None
 if "worksheet_detail" not in st.session_state: st.session_state.worksheet_detail = None
-if "api_key" not in st.session_state: st.session_state.api_key = ""
 
 if "training_list" not in st.session_state: 
     st.session_state.training_list = ["2026학년도 새학년 집중준비기간 연수", "전남글빛국어교육연구회 공개수업"]
@@ -75,32 +74,39 @@ with col_menu:
     st.markdown("<div class='menu-title'>🏫 행정/학급 운영</div>", unsafe_allow_html=True)
     nav_button("📋 온라인 등록부", "등록부")
     nav_button("💌 학급 알림장/문자", "알림장")
-    
-    st.write("---")
-    st.markdown("##### ⚙️ 교과 설정")
-    selected_subject = st.selectbox("📚 담당 과목", ["공통국어", "윤리와 사상", "생활과 윤리", "기타"], label_visibility="collapsed")
-    
-    # 🌟 새롭게 추가된 인쇄물 기본 정보 입력칸
-    st.markdown("##### 🖨️ 출력물 정보 (수정 가능)")
-    class_date = st.text_input("수업 일시", value="2026. 10. 14. (수) 14:00")
-    class_location = st.text_input("수업 장소", value="1학년 6반 교실")
-    target_students = st.text_input("수업 대상", value="1학년 6반 학생")
-    teacher_name = st.text_input("지도 교사", value="유일한")
-    
-    st.write("---")
-    st.session_state.api_key = st.text_input("🔑 Gemini API 키 입력", type="password")
 
 with col_main:
     if st.session_state.current_page == "과정안 생성":
-        st.subheader(f"📝 {selected_subject} 공개수업 과정안 & 활동지 생성기")
-        uploaded_file = st.file_uploader("📄 교과서 PDF 업로드", type=["pdf"])
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 1. 분석", "🎯 2. 지도안 생성", "📝 3. 활동지 생성", "🖨️ 4. 인쇄 출력"])
+        st.subheader("📝 개념기반 공개수업 과정안 & 활동지 생성기")
+        # 5단계 탭으로 완벽하게 분리
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "📝 4. 활동지 생성", "🖨️ 5. 인쇄 출력"
+        ])
         
-        # [탭 1] 단원 분석
+        # [탭 1] 기본 설정 및 파일 업로드 (가운데로 이동)
         with tab1:
+            st.markdown("#### ⚙️ 수업 기본 정보 세팅")
+            st.info("입력하신 정보는 인쇄될 지도안과 학생 활동지에 자동으로 반영됩니다.")
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                st.selectbox("📚 담당 과목", ["공통국어", "윤리와 사상", "생활과 윤리", "기타"], key="selected_subject")
+                st.text_input("📅 수업 일시", placeholder="예) 2026. 10. 14. (수) 14:00", key="class_date")
+                st.text_input("🏫 수업 장소", placeholder="예) 1학년 6반 교실", key="class_location")
+            with c2:
+                st.text_input("👥 수업 대상", placeholder="예) 1학년 6반 학생", key="target_students")
+                st.text_input("👨‍🏫 지도 교사", placeholder="이름을 입력해 주세요", key="teacher_name")
+                st.text_input("🔑 Gemini API 키", type="password", placeholder="발급받은 API 키를 입력하세요", key="api_key")
+                
+            st.write("---")
+            st.markdown("#### 📄 교과서 PDF 업로드")
+            uploaded_file = st.file_uploader("단원 분석을 위한 PDF 파일을 업로드해 주세요.", type=["pdf"])
+                
+        # [탭 2] 단원 분석
+        with tab2:
             if uploaded_file and st.session_state.api_key:
-                if st.button("🚀 AI 분석 시작", type="primary"):
-                    with st.spinner("AI가 교과서를 분석 중입니다..."):
+                if st.button("🚀 AI 단원 분석 시작", type="primary"):
+                    with st.spinner("AI가 교과서를 분석하여 개념기반 흐름을 추출하고 있습니다..."):
                         text_data = ""
                         with pdfplumber.open(uploaded_file) as pdf:
                             for page in pdf.pages:
@@ -108,72 +114,83 @@ with col_main:
                                 if ext: text_data += ext + "\n"
                         st.session_state.extracted_text = text_data
                         
-                        prompt1 = f"당신은 고등학교 {selected_subject} 수석 교사입니다. 텍스트를 분석해 최적 총 차시를 설계하세요. JSON 배열로 답변 (키: session, type, title, desc). [내용] {text_data}"
+                        prompt1 = f"당신은 개념기반 교육과정(CBI)에 정통한 고등학교 {st.session_state.selected_subject} 수석 교사입니다. 텍스트를 분석해 개념 탐구에 적합한 최적 총 차시를 설계하세요. JSON 배열로 답변 (키: session, type, title, desc). [내용] {text_data}"
                         try:
                             res1 = call_gemini_robust(st.session_state.api_key, prompt1)
                             st.session_state.proposed_sessions = json.loads(res1.replace("```json", "").replace("```", "").strip())
-                            st.success("분석 완료! 2단계로 이동하세요.")
+                            st.success("단원 분석 완료! 3단계 탭으로 이동하세요.")
                         except Exception as e:
                             st.error(str(e))
             else:
-                st.info("좌측에 API 키를 입력하고 교과서 PDF를 업로드해 주세요.")
+                st.info("1단계 탭에서 API 키를 입력하고 교과서 PDF를 업로드해 주세요.")
                 
-        # [탭 2] 공개수업 지도안 생성
-        with tab2:
+        # [탭 3] 공개수업 지도안 생성 (개념기반 프롬프트 대폭 강화)
+        with tab3:
             if st.session_state.proposed_sessions:
                 options = {f"{s['session']}차시 - {s['title']}": s for s in st.session_state.proposed_sessions}
-                sel_opt = st.radio("과정안 차시 선택:", list(options.keys()))
-                if st.button("📝 공개수업 지도안 생성", type="primary"):
+                sel_opt = st.radio("과정안을 생성할 차시를 선택하세요:", list(options.keys()))
+                if st.button("📝 개념기반 공개수업 지도안 생성", type="primary"):
                     chosen = options[sel_opt]
-                    with st.spinner("개념기반(CBI) 공개수업 지도안을 작성 중입니다..."):
-                        prompt2 = f"""당신은 {selected_subject} 수석 교사입니다. 주제: {chosen['title']}. 전남글빛국어교육연구회 공개수업 스타일로 다음 구조의 JSON을 생성하세요:
+                    with st.spinner("사실적 지식을 넘어 핵심 아이디어로 나아가는 지도안을 설계 중입니다..."):
+                        prompt2 = f"""당신은 개념기반 교육과정(CBI)에 정통한 고등학교 {st.session_state.selected_subject} 수석 교사입니다. 
+주제: {chosen['title']}. 
+단순한 지식 전달이 아닌, 학생들이 다양한 자료를 분석·통합하여 '핵심 아이디어(일반화)'에 스스로 도달할 수 있는 학생 주도형 탐구 수업을 설계해 주세요.
+반드시 아래 키를 포함한 JSON 형식으로 답변하세요:
 {{
-  "overview": "수업 개요 및 설계 의도 (2~3문장)",
-  "macro": "거시 개념 (예: #관점 #통합)",
-  "micro": "미시 개념 (예: #형식과 맥락)",
-  "objective": "본시 학습 목표",
-  "big_idea": "핵심 아이디어 (일반화)",
-  "intro_act": "도입 활동 (동기유발, 퀴즈 등)", "intro_time": "10분", "intro_note": "지도상 유의점",
-  "dev_act": "전개 활동 (구체적 교사-학생 발문, 관점 세우기 3단계 등)", "dev_time": "30분", "dev_note": "태블릿 활용 등",
-  "conc_act": "정리 활동 (온라인 보드 공유, 하트/댓글 소통 등)", "conc_time": "10분", "conc_note": "상호작용 강조"
+  "overview": "수업 개요 및 개념기반 설계 의도 (2~3문장)",
+  "macro": "거시 개념 (예: #관점 #통합 #체계 등)",
+  "micro": "미시 개념 (단원에 특화된 핵심 개념)",
+  "objective": "본시 학습 목표 (DO와 UNDERSTAND가 결합된 형태)",
+  "big_idea": "핵심 아이디어 / 일반화 (학생이 도달해야 할 깊은 이해)",
+  "intro_act": "도입 (개념적 사고를 자극하는 생각열기 질문 및 동기유발)", "intro_time": "10분", "intro_note": "학생의 삶과 연결",
+  "dev_act": "전개 (사실적 지식 탐구 -> 개념적 이해로 나아가는 활동. 교사의 탐구 질문과 학생의 상호작용 상세화)", "dev_time": "30분", "dev_note": "모둠 활동 및 스마트기기 활용",
+  "conc_act": "정리 (핵심 아이디어 도출 공유 및 일반화 성찰, 형성평가)", "conc_time": "10분", "conc_note": "개념 전이 점검"
 }}
 [내용] {st.session_state.extracted_text}"""
                         try:
                             res2 = call_gemini_robust(st.session_state.api_key, prompt2)
                             st.session_state.selected_session_detail = json.loads(res2.replace("```json", "").replace("```", "").strip())
                             st.session_state.selected_session_detail.update({'session': chosen['session'], 'title': chosen['title']})
-                            st.success("지도안 완성! 3단계로 이동하세요.")
+                            st.success("개념기반 지도안 완성! 4단계 탭으로 이동하세요.")
                         except Exception as e:
                             st.error(str(e))
             else:
-                st.warning("1단계 분석을 완료해 주세요.")
+                st.warning("2단계 단원 분석을 먼저 완료해 주세요.")
 
-        # [탭 3] A4 학생 활동지 생성
-        with tab3:
+        # [탭 4] A4 학생 활동지 생성
+        with tab4:
             if st.session_state.selected_session_detail:
-                if st.button("📝 A4 학생 활동지 생성", type="primary"):
-                    with st.spinner("A4 출력용 맞춤형 학생 활동지를 디자인 중입니다..."):
-                        prompt3 = f"""당신은 {selected_subject} 수석 교사입니다. 앞서 만든 '{st.session_state.selected_session_detail['title']}' 수업의 학생 배부용 활동지를 만듭니다. 
-반드시 아래 JSON 구조로 답변하세요:
+                if st.button("📝 A4 개념기반 학생 활동지 생성", type="primary"):
+                    with st.spinner("탐구 질문과 3단 논리 구조가 포함된 학생 활동지를 디자인 중입니다..."):
+                        prompt3 = f"""당신은 개념기반 교육과정(CBI) 전문가이자 {st.session_state.selected_subject} 수석 교사입니다. 
+앞서 설계한 '{st.session_state.selected_session_detail['title']}' 수업의 학생용 활동지를 만듭니다. 
+단순 빈칸 채우기가 아닌, 학생이 스스로 질문을 만들고 관점을 세울 수 있도록 구성하세요.
+아래 JSON 구조로 답변하세요:
 {{
   "title": "활동지 제목",
-  "act1_title": "[활동 1] 본문 비교·분석하기 (제목, 관점, 형식적 특징 표 형태로 구성할 내용)",
-  "act2_title": "[활동 2] 생각을 여는 탐구 질문 만들기 (피해야 할 질문 vs 좋은 질문 예시 포함)",
+  "act1_title": "[활동 1] 지식 탐구 및 분석 (자료를 분석하여 표로 정리할 내용 안내)",
+  "act2_title": "[활동 2] 생각을 여는 탐구 질문 만들기 (피해야 할 닫힌 질문 vs 추천하는 열린 탐구 질문 예시)",
   "act3_title": "[활동 3] 나만의 관점 세우기 (비판적 재구성 - 3단 마법의 문장 틀 포함)",
-  "wrap_up": "[마무리 소통 활동] 퀴즈앤(QuizN) 보드 공유 및 상호작용 체크리스트"
+  "wrap_up": "[마무리] 상호작용 및 성찰 체크리스트"
 }}"""
                         try:
                             res3 = call_gemini_robust(st.session_state.api_key, prompt3)
                             st.session_state.worksheet_detail = json.loads(res3.replace("```json", "").replace("```", "").strip())
-                            st.success("활동지 완성! 4단계(인쇄)로 이동하세요.")
+                            st.success("활동지 완성! 5단계(인쇄) 탭으로 이동하세요.")
                         except Exception as e:
                             st.error(str(e))
             else:
-                st.warning("2단계 지도안 생성을 완료해 주세요.")
+                st.warning("3단계 지도안 생성을 완료해 주세요.")
 
-        # [탭 4] 인쇄 출력 (입력된 정보 자동 적용)
-        with tab4:
+        # [탭 5] 인쇄 출력 (입력된 정보 자동 적용)
+        with tab5:
             col_a, col_b = st.columns(2)
+            
+            sub = st.session_state.get('selected_subject', '')
+            c_date = st.session_state.get('class_date', '')
+            c_loc = st.session_state.get('class_location', '')
+            t_stud = st.session_state.get('target_students', '')
+            t_name = st.session_state.get('teacher_name', '')
             
             # 1. 지도안 HTML 다운로드
             if st.session_state.selected_session_detail:
@@ -204,27 +221,26 @@ with col_main:
 </head>
 <body>
     <button class="print-btn" onclick="window.print()">🖨️ 지도안 인쇄하기</button>
-    <h1>{selected_subject}과 교수·학습 과정안</h1>
+    <h1>{sub}과 교수·학습 과정안</h1>
     
-    <!-- 좌측에서 입력한 정보가 들어가는 표 -->
     <table class="header-table">
         <tr>
-            <th>일 시</th><td>{class_date}</td>
-            <th>장 소</th><td>{class_location}</td>
+            <th>일 시</th><td>{c_date}</td>
+            <th>장 소</th><td>{c_loc}</td>
         </tr>
         <tr>
-            <th>대 상</th><td>{target_students}</td>
-            <th>지도 교사</th><td>{teacher_name}</td>
+            <th>대 상</th><td>{t_stud}</td>
+            <th>지도 교사</th><td>{t_name}</td>
         </tr>
     </table>
 
-    <h2>| 1. 수업의 개요 및 설계 의도</h2>
+    <h2>| 1. 수업의 개요 및 개념기반 설계 의도</h2>
     <p>{d.get('overview', '')}</p>
-    <h2>| 2. 개념기반 교육과정(CBI) 기반 목표 설정</h2>
+    <h2>| 2. 개념기반 교육과정(CBI) 목표 설정</h2>
     <ul>
         <li><b>거시 개념:</b> {d.get('macro', '')} &nbsp;&nbsp; <b>미시 개념:</b> {d.get('micro', '')}</li>
         <li><b>본시 학습 목표:</b> {d.get('objective', '')}</li>
-        <li><b>핵심 아이디어:</b> {d.get('big_idea', '')}</li>
+        <li><b>핵심 아이디어(일반화):</b> {d.get('big_idea', '')}</li>
     </ul>
     <h2>| 3. 본시 교수·학습 과정안</h2>
     <table class="content-table">
@@ -236,7 +252,7 @@ with col_main:
 </body>
 </html>"""
                 with col_a:
-                    st.download_button("📥 [교사용] 지도안 다운로드 (HTML)", data=html_plan.encode('utf-8'), file_name=f"공개수업지도안_{d.get('session')}차시.html", mime="text/html", type="primary")
+                    st.download_button("📥 [교사용] 지도안 다운로드", data=html_plan.encode('utf-8'), file_name=f"개념기반_과정안_{d.get('session')}차시.html", mime="text/html", type="primary", use_container_width=True)
 
             # 2. 활동지 HTML 다운로드
             if st.session_state.worksheet_detail:
@@ -265,15 +281,14 @@ with col_main:
     <button class="print-btn" onclick="window.print()">🖨️ A4 활동지 인쇄하기</button>
     <div class="header-box">
         <h1>[개념기반 탐구 활동지] {w.get('title', '')}</h1>
-        <!-- 좌측에서 입력한 대상(target_students) 자동 삽입 -->
-        <div class="info-line">[{target_students}] ___번 이름: _____________</div>
+        <div class="info-line">[{t_stud}] ___번 이름: _____________</div>
         <div class="concept-line"><b>[거시 개념]</b> {d.get('macro', '')} &nbsp;&nbsp; <b>[미시 개념]</b> {d.get('micro', '')}</div>
         <div class="concept-line"><b>[학습 목표]</b> {d.get('objective', '')}</div>
         <div class="concept-line"><b>★ [핵심 아이디어]</b> {d.get('big_idea', '')}</div>
     </div>
     
     <h3>{w.get('act1_title', '[활동 1]')}</h3>
-    <div class="box">{w.get('act1_desc', '수업 중 다룬 텍스트의 관점과 형식을 표 형태로 정리해 봅시다.').replace(chr(10), '<br>')}</div>
+    <div class="box">{w.get('act1_desc', '수업 중 다룬 내용을 분석하여 정리해 봅시다.').replace(chr(10), '<br>')}</div>
     
     <h3>{w.get('act2_title', '[활동 2] 생각을 여는 질문 만들기')}</h3>
     <p>※ 정답이 정해진 질문 대신, 친구들과 토론할 수 있는 깊이 있는 질문을 만들어 보세요.</p>
@@ -284,11 +299,11 @@ with col_main:
     <div class="box" style="min-height: 150px;"></div>
 
     <h3>{w.get('wrap_up', '[마무리] 자기 점검 및 상호작용')}</h3>
-    <p>□ 내 초안을 퀴즈앤 게시판에 올렸나요?<br>□ 친구의 글 3개 이상 읽고 하트(♥)를 눌렀나요?<br>□ 존중을 담은 댓글을 1개 이상 남겼나요?</p>
+    <div class="box">{w.get('wrap_up', '수업 후 나의 배움을 성찰하고 친구들과 공유해 봅시다.').replace(chr(10), '<br>')}</div>
 </body>
 </html>"""
                 with col_b:
-                    st.download_button("📥 [학생용] A4 활동지 다운로드", data=html_work.encode('utf-8'), file_name=f"학생활동지_{d.get('session')}차시.html", mime="text/html", type="primary")
+                    st.download_button("📥 [학생용] 활동지 다운로드", data=html_work.encode('utf-8'), file_name=f"개념기반_활동지_{d.get('session')}차시.html", mime="text/html", type="primary", use_container_width=True)
 
     # --- 3. 학생 세특 초안 ---
     elif st.session_state.current_page == "세특 초안":
@@ -300,13 +315,14 @@ with col_main:
         stu_activity = st.text_area("주요 관찰 내용 및 활동 키워드", placeholder="예) 인공지능 윤리를 주제로 한 찬반 토론에서 사회자 역할을 맡아 갈등을 조율함.")
         
         if st.button("✨ 세특 초안 생성하기", type="primary"):
-            if not st.session_state.api_key:
-                st.error("좌측에 API 키를 입력해 주세요.")
+            api_key_check = st.session_state.get("api_key", "")
+            if not api_key_check:
+                st.error("과정안 생성 메뉴의 1단계 탭에서 API 키를 먼저 입력해 주세요.")
             elif stu_name and stu_activity:
                 with st.spinner("NEIS 양식에 맞게 문장을 작성 중입니다..."):
-                    prompt = f"당신은 고등학교 {selected_subject} 교사입니다. 학생 '{stu_name}'의 세특을 작성합니다. 수준: {stu_level} / 관찰: {stu_activity}. 명사형 종결어미(~함, ~임)를 사용하고, 500자 내외로 전문적이고 긍정적으로 작성하세요."
+                    prompt = f"당신은 고등학교 {st.session_state.get('selected_subject', '교과')} 교사입니다. 학생 '{stu_name}'의 세특을 작성합니다. 수준: {stu_level} / 관찰: {stu_activity}. 명사형 종결어미(~함, ~임)를 사용하고, 500자 내외로 전문적이고 긍정적으로 작성하세요."
                     try:
-                        res_text = call_gemini_robust(st.session_state.api_key, prompt)
+                        res_text = call_gemini_robust(api_key_check, prompt)
                         st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
                         st.markdown(res_text)
                         st.markdown("</div>", unsafe_allow_html=True)
@@ -322,13 +338,14 @@ with col_main:
         msg_context = st.text_area("전달할 핵심 내용 입력", placeholder="예) 내일 체험학습 감. 도시락 꼭 싸오고 8시 반까지 운동장 집합.")
         
         if st.button("💌 알림장 문구 생성", type="primary"):
-            if not st.session_state.api_key:
-                st.error("좌측에 API 키를 입력해 주세요.")
+            api_key_check = st.session_state.get("api_key", "")
+            if not api_key_check:
+                st.error("과정안 생성 메뉴의 1단계 탭에서 API 키를 먼저 입력해 주세요.")
             elif msg_context:
                 with st.spinner("정중한 문구로 변환 중입니다..."):
                     prompt = f"당신은 다정하고 꼼꼼한 고등학교 담임교사입니다. 내용을 학부모님과 학생 단체 문자로 보낼 수 있게 알림장 형태로 다듬어주세요. 전달 내용: {msg_context}. 인사말로 시작해 끝맺음 인사를 포함하고 줄바꿈과 이모지를 적절히 사용하세요."
                     try:
-                        res_text = call_gemini_robust(st.session_state.api_key, prompt)
+                        res_text = call_gemini_robust(api_key_check, prompt)
                         st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
                         st.markdown(res_text)
                         st.markdown("</div>", unsafe_allow_html=True)
