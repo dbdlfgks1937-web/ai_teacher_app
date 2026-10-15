@@ -36,7 +36,7 @@ def load_css(file_name):
         pass
 load_css("style.css")
 
-# 세션 상태 초기화
+# 세션 상태(기억력) 초기화
 if "current_page" not in st.session_state: st.session_state.current_page = "과정안 생성"
 if "extracted_text" not in st.session_state: st.session_state.extracted_text = ""
 if "proposed_sessions" not in st.session_state: st.session_state.proposed_sessions = None
@@ -44,6 +44,10 @@ if "selected_session_detail" not in st.session_state: st.session_state.selected_
 if "worksheet_detail" not in st.session_state: st.session_state.worksheet_detail = None
 if "quiz_detail" not in st.session_state: st.session_state.quiz_detail = None
 if "final_subject" not in st.session_state: st.session_state.final_subject = "공통국어"
+
+# 🌟 근본적인 서명 해결을 위한 세션 추가
+if "latest_signature" not in st.session_state: st.session_state.latest_signature = ""
+if "canvas_key" not in st.session_state: st.session_state.canvas_key = 0
 
 if "training_list" not in st.session_state: 
     st.session_state.training_list = ["2026학년도 새학년 집중준비기간 연수", "전남글빛국어교육연구회 공개수업"]
@@ -77,7 +81,6 @@ def call_gemini_robust(api_key, prompt, max_retries=3):
 col_menu, col_main, col_info = st.columns([2, 6, 2], gap="large")
 
 with col_menu:
-    # 🌟 API 키 입력을 좌측 상단으로 최우선 배치
     st.markdown("##### 🔑 필수 API 설정")
     st.session_state.api_key = st.text_input("Gemini API 키 입력", type="password", placeholder="여기에 키를 붙여넣으세요")
     if not st.session_state.api_key: 
@@ -112,10 +115,7 @@ with col_main:
     # --------------------------------------------------------------------------------
     if st.session_state.current_page == "과정안 생성":
         st.subheader("📝 개념기반 공개수업 마스터플랜 생성기")
-        
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-            "⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "📝 4. 활동지 생성", "❓ 5. 평가 출제", "🖨️ 6. 인쇄/추출"
-        ])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "📝 4. 활동지 생성", "❓ 5. 평가 출제", "🖨️ 6. 인쇄/추출"])
         
         with tab1:
             st.markdown("#### ⚙️ 수업 기본 정보 세팅")
@@ -152,7 +152,7 @@ with col_main:
                             st.session_state.proposed_sessions = json.loads(res1.replace("```json", "").replace("```", "").strip())
                             st.success("단원 분석 완료! 3단계 탭으로 이동하세요.")
                         except Exception as e: st.error(str(e))
-            elif not st.session_state.api_key: st.error("👈 좌측 메뉴 상단에 API 키를 먼저 입력해 주세요.")
+            elif not st.session_state.api_key: st.error("👈 좌측 상단에 API 키를 먼저 입력해 주세요.")
             else: st.warning("1단계 탭에서 교과서 PDF를 업로드해 주세요.")
                 
         with tab3:
@@ -335,7 +335,7 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (접근 에러 완벽 차단 방탄조끼 코드)
+    # 🌟 [메뉴 5] 등록부 (완전 재설계된 캔버스 로직)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
@@ -362,6 +362,7 @@ with col_main:
         
         st.write("✍️ **서명 (필수)** - 마우스나 스마트폰 터치로 직접 서명해 주세요.")
         
+        # 🌟 선생님이 그리는 즉시 안전한 보관함에 실시간 백업됩니다.
         canvas_result = st_canvas(
             stroke_width=3, 
             stroke_color="#000000", 
@@ -370,52 +371,49 @@ with col_main:
             width=400, 
             drawing_mode="freedraw", 
             update_streamlit=True, 
-            key="sig_canvas"
+            key=f"sig_canvas_{st.session_state.canvas_key}"
         )
         
+        try:
+            if canvas_result is not None and getattr(canvas_result, 'image_data', None) is not None:
+                img_array = canvas_result.image_data.astype('uint8')
+                if np.sum(img_array[:, :, 3]) > 0:
+                    img_rgba = Image.fromarray(img_array, 'RGBA')
+                    img_rgb = Image.new("RGB", img_rgba.size, (255, 255, 255))
+                    img_rgb.paste(img_rgba, mask=img_rgba.split()[3])
+                    buffered = io.BytesIO()
+                    img_rgb.save(buffered, format="PNG")
+                    st.session_state.latest_signature = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                else:
+                    st.session_state.latest_signature = "" 
+        except Exception:
+            pass
+
         if st.button("✅ 서명 완료 및 제출", type="primary", use_container_width=True):
             if not in_name:
                 st.warning("이름을 입력하세요.")
+            elif not st.session_state.latest_signature:
+                st.warning("⚠️ 서명이 인식되지 않았습니다. 캔버스에 서명을 그려주세요!")
             else:
-                is_valid_sig = False
-                sig_base64 = ""
+                new_row = pd.DataFrame([{
+                    "연번": len(st.session_state.registry_df)+1, 
+                    "연수명": selected_training, 
+                    "소속": in_dept, 
+                    "직위": in_pos, 
+                    "이름": in_name, 
+                    "서명 상태": "✅ 완료", 
+                    "서명 이미지": st.session_state.latest_signature, 
+                    "등록 일시": datetime.now().strftime("%m-%d %H:%M")
+                }])
+                st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
+                st.success(f"{in_name} 선생님의 손글씨 서명이 완벽하게 등록되었습니다!")
                 
-                # 🌟 완벽한 에러 차단: image_data 프로퍼티 접근 자체를 try-except 안에서 실행
-                try:
-                    if canvas_result is not None:
-                        img_array = canvas_result.image_data
-                        if img_array is not None:
-                            # 캔버스에 실제로 그려진 픽셀(투명도 알파채널)이 존재하는지 검사
-                            if np.sum(img_array[:, :, 3]) > 0:
-                                is_valid_sig = True
-                                img_rgba = Image.fromarray(img_array.astype('uint8'), 'RGBA')
-                                img_rgb = Image.new("RGB", img_rgba.size, (255, 255, 255))
-                                img_rgb.paste(img_rgba, mask=img_rgba.split()[3])
-                                buffered = io.BytesIO()
-                                img_rgb.save(buffered, format="PNG")
-                                sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                except RuntimeError:
-                    # 라이브러리 특유의 동기화 지연 RuntimeError 무시
-                    pass
-                except Exception:
-                    pass
+                # 🌟 성공 시 다음 사람을 위해 캔버스 자동 초기화
+                st.session_state.latest_signature = ""
+                st.session_state.canvas_key += 1
+                time.sleep(1)
+                st.rerun()
                 
-                if not is_valid_sig:
-                    st.warning("⚠️ 서명이 인식되지 않았거나 전송 중입니다. 서명을 캔버스에 그리신 후 1초 뒤에 다시 버튼을 눌러주세요!")
-                else:
-                    new_row = pd.DataFrame([{
-                        "연번": len(st.session_state.registry_df)+1, 
-                        "연수명": selected_training, 
-                        "소속": in_dept, 
-                        "직위": in_pos, 
-                        "이름": in_name, 
-                        "서명 상태": "✅ 완료", 
-                        "서명 이미지": sig_base64, 
-                        "등록 일시": datetime.now().strftime("%m-%d %H:%M")
-                    }])
-                    st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
-                    st.success(f"{in_name} 선생님의 손글씨 서명이 완벽하게 등록되었습니다!")
-                    
         st.markdown("</div>", unsafe_allow_html=True)
         
         display_df = st.session_state.registry_df.drop(columns=["서명 이미지"], errors="ignore")
