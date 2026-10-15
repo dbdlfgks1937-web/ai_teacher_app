@@ -1,0 +1,62 @@
+/* 🌟 물음표 툴팁 아이콘 스타일 */
+.tooltip {
+    position: relative;
+    display: inline-block;
+    cursor: help;
+    color: #868e96;
+    background-color: #f1f3f5;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    text-align: center;
+    line-height: 16px;
+    font-size: 11px;
+    font-weight: bold;
+    margin-left: 5px;
+    vertical-align: middle;
+}
+
+/* 🌟 툴팁 말풍선 스타일 */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 260px;
+    background-color: #343a40;
+    color: #f8f9fa;
+    text-align: left;
+    border-radius: 8px;
+    padding: 12px;
+    position: absolute;
+    z-index: 100;
+    bottom: 150%; 
+    left: 50%;
+    margin-left: -130px; 
+    opacity: 0;
+    transition: opacity 0.3s;
+    font-size: 12px;
+    font-weight: normal;
+    line-height: 1.5;
+    box-shadow: 0px 4px 12px rgba(0,0,0,0.15);
+}
+
+/* 말풍선 꼬리 만들기 */
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -6px;
+    border-width: 6px;
+    border-style: solid;
+    border-color: #343a40 transparent transparent transparent;
+}
+
+/* 마우스 올렸을 때 말풍선 나타나기 */
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* 툴팁 내 강조 텍스트 */
+.tooltiptext strong {
+    color: #ffb3c6;
+}
