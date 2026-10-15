@@ -109,10 +109,7 @@ with col_main:
     # --------------------------------------------------------------------------------
     if st.session_state.current_page == "과정안 생성":
         st.subheader("📝 개념기반 공개수업 마스터플랜 생성기")
-        
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-            "⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "📝 4. 활동지 생성", "❓ 5. 평가 출제", "🖨️ 6. 인쇄/추출"
-        ])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "📝 4. 활동지 생성", "❓ 5. 평가 출제", "🖨️ 6. 인쇄/추출"])
         
         with tab1:
             st.markdown("#### ⚙️ 수업 기본 정보 세팅")
@@ -219,7 +216,6 @@ with col_main:
         with tab6:
             st.markdown("#### 🖨️ 생성 파일 인쇄 및 엑셀 추출")
             c_a, c_b, c_c, c_d = st.columns(4)
-            
             sub = st.session_state.final_subject
             s_name = st.session_state.get('school_name', '')
             teacher_display = f"[{s_name}] {st.session_state.get('teacher_name', '')}".strip() if s_name else st.session_state.get('teacher_name', '')
@@ -228,7 +224,7 @@ with col_main:
             # 1. 과정안 HTML
             if st.session_state.selected_session_detail:
                 d = st.session_state.selected_session_detail
-                html_plan = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>공개수업 지도안</title><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; line-height: 1.5; }} table {{ width: 100%; border-collapse: collapse; margin-bottom: 25px; }} th, td {{ border: 1px solid #000; padding: 8px; }} th {{ background-color: #f2f2f2; text-align: center; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #1a73e8; color: white; text-align: center; cursor: pointer; border-radius: 5px; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 지도안 인쇄하기</button><h1 style="text-align:center;">{sub}과 교수·학습 과정안</h1><table><tr><th>일 시</th><td>{st.session_state.get('class_date','')}</td><th>장 소</th><td>{st.session_state.get('class_location','')}</td></tr><tr><th>대 상</th><td>{st.session_state.get('target_students','')}</td><th>지도 교사</th><td>{teacher_display}</td></tr></table><h3>| 1. 수업 개요 및 의도</h3><p>{d.get('overview','')}</p><h3>| 2. CBI 목표</h3><ul><li><b>거시/미시:</b> {d.get('macro','')} / {d.get('micro','')}</li><li><b>목표:</b> {d.get('objective','')}</li><li><b>일반화:</b> {d.get('big_idea','')}</li></ul><h3>| 3. 전개</h3><table><tr><th width="10%">단계</th><th width="10%">시량</th><th width="60%">교수·학습 활동</th><th width="20%">유의점</th></tr><tr><td align="center">도 입</td><td align="center">{d.get('intro_time','')}</td><td>{d.get('intro_act','').replace(chr(10), '<br>')}</td><td>{d.get('intro_note','').replace(chr(10), '<br>')}</td></tr><tr><td align="center">전 개</td><td align="center">{d.get('dev_time','')}</td><td>{d.get('dev_act','').replace(chr(10), '<br>')}</td><td>{d.get('dev_note','').replace(chr(10), '<br>')}</td></tr><tr><td align="center">정 리</td><td align="center">{d.get('conc_time','')}</td><td>{d.get('conc_act','').replace(chr(10), '<br>')}</td><td>{d.get('conc_note','').replace(chr(10), '<br>')}</td></tr></table></body></html>"""
+                html_plan = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; line-height: 1.5; }} table {{ width: 100%; border-collapse: collapse; margin-bottom: 25px; }} th, td {{ border: 1px solid #000; padding: 8px; }} th {{ background-color: #f2f2f2; text-align: center; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #1a73e8; color: white; text-align: center; cursor: pointer; border-radius: 5px; border:none; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 지도안 인쇄하기</button><h1 style="text-align:center;">{sub}과 교수·학습 과정안</h1><table><tr><th>일 시</th><td>{st.session_state.get('class_date','')}</td><th>장 소</th><td>{st.session_state.get('class_location','')}</td></tr><tr><th>대 상</th><td>{st.session_state.get('target_students','')}</td><th>지도 교사</th><td>{teacher_display}</td></tr></table><h3>| 1. 수업 개요 및 의도</h3><p>{d.get('overview','')}</p><h3>| 2. CBI 목표</h3><ul><li><b>거시/미시:</b> {d.get('macro','')} / {d.get('micro','')}</li><li><b>목표:</b> {d.get('objective','')}</li><li><b>일반화:</b> {d.get('big_idea','')}</li></ul><h3>| 3. 전개</h3><table><tr><th width="10%">단계</th><th width="10%">시량</th><th width="60%">교수·학습 활동</th><th width="20%">유의점</th></tr><tr><td align="center">도 입</td><td align="center">{d.get('intro_time','')}</td><td>{d.get('intro_act','').replace(chr(10), '<br>')}</td><td>{d.get('intro_note','').replace(chr(10), '<br>')}</td></tr><tr><td align="center">전 개</td><td align="center">{d.get('dev_time','')}</td><td>{d.get('dev_act','').replace(chr(10), '<br>')}</td><td>{d.get('dev_note','').replace(chr(10), '<br>')}</td></tr><tr><td align="center">정 리</td><td align="center">{d.get('conc_time','')}</td><td>{d.get('conc_act','').replace(chr(10), '<br>')}</td><td>{d.get('conc_note','').replace(chr(10), '<br>')}</td></tr></table></body></html>"""
                 with c_a: st.download_button("📥 1. 지도안", data=html_plan.encode('utf-8'), file_name="지도안.html", mime="text/html", type="primary", use_container_width=True)
 
             # 2. 활동지 HTML
@@ -246,9 +242,8 @@ with col_main:
                 vocab_html = "".join([f"<li>{item['q']}<br>( 정답: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; )</li>" for item in q.get('vocab_quiz', [])])
                 mcq_html = ""
                 for item in q.get('mcq', []):
-                    opt_str = "<ol>" + "".join([f"<li>{opt}</li>" for opt in item.get('options', [])]) + "</ol>"
+                    opt_str = "<ol>" + "".join([f"<li>{opt}</li>" for item_opt in item.get('options', [])]) + "</ol>"
                     mcq_html += f"<li>{item['q']}{opt_str}</li>"
-                
                 ans_html = "<ul>"
                 for item in q.get('ox_quiz', []): ans_html += f"<li><b>[O/X]</b> 정답: {item['a']} - {item.get('exp','')}</li>"
                 for item in q.get('initial_quiz', []): ans_html += f"<li><b>[초성]</b> 정답: {item['a']} - {item.get('exp','')}</li>"
@@ -271,7 +266,7 @@ with col_main:
                 with c_d: st.download_button("📥 4. 퀴즈앤(CSV)", data=df_quiz.to_csv(index=False, encoding='utf-8-sig'), file_name="퀴즈앤_일괄등록.csv", mime="text/csv", type="secondary", use_container_width=True)
 
     # --------------------------------------------------------------------------------
-    # [메뉴 2] 행사 기획 마스터
+    # [메뉴 2, 3, 4] 행사, 사안, 세특, 알림장 (동일하게 유지)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "행사 기획":
         st.subheader("🎉 대형 행사 시나리오 & 기안문 자동 생성기")
@@ -279,7 +274,6 @@ with col_main:
         with col1: event_name = st.text_input("행사명", placeholder="예) 2026학년도 교실로 찾아가는 교육과정 박람회")
         with col2: event_date = st.text_input("행사 일시 및 장소", placeholder="예) 6월 10일 (수), 대강당")
         event_purpose = st.text_area("행사 목적 및 주요 식순(키워드)", placeholder="예) 개회식, 교장선생님 인사말, 학생 서포터즈 발대식, 부스 투어")
-        
         if st.button("🎉 공식 기안문 & 대본 생성하기", type="primary"):
             if not st.session_state.api_key: st.error("👈 좌측 메뉴 하단에 API 키를 먼저 입력해 주세요.")
             elif event_name and event_purpose:
@@ -292,9 +286,6 @@ with col_main:
                         st.markdown("</div>", unsafe_allow_html=True)
                     except Exception as e: st.error(str(e))
 
-    # --------------------------------------------------------------------------------
-    # [메뉴 3] 사안/민원 쉴드
-    # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "사안 보고":
         st.subheader("🛡️ 교권 보호 사안 보고서 & 상담 매뉴얼 생성기")
         incident_memo = st.text_area("발생한 사안이나 민원 내용을 자유롭게 적어주세요.", placeholder="예) 수업 중에 A학생이 엎드려 자길래 깨웠더니 소리를 지르고 욕설을 함.", height=150)
@@ -310,9 +301,6 @@ with col_main:
                         st.markdown("</div>", unsafe_allow_html=True)
                     except Exception as e: st.error(str(e))
 
-    # --------------------------------------------------------------------------------
-    # [기존 메뉴들] 세특 초안, 알림장
-    # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "세특 초안":
         st.subheader("💡 학생 세특(관찰) 초안 생성기")
         col1, col2 = st.columns(2)
@@ -341,7 +329,7 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (서명 동기화 및 렌더링 로직 대폭 강화)
+    # 🌟 [메뉴 5] 등록부 (완벽한 손글씨 캔버스 복구 및 예외 처리 강화)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
@@ -366,26 +354,36 @@ with col_main:
         with c2: in_pos = st.text_input("직위", placeholder="예) 교사")
         with c3: in_name = st.text_input("이름", placeholder="예) 홍길동")
         
-        st.write("✍️ **서명** (마우스나 터치로 서명 후, 캔버스 바깥 빈 공간을 살짝 클릭해 주세요!)")
+        st.write("✍️ **서명 (필수)** - 마우스나 스마트폰 터치로 직접 서명해 주세요.")
+        
+        # 🌟 캔버스 컴포넌트 복구
         canvas_result = st_canvas(
-            stroke_width=2, 
+            stroke_width=3, 
             stroke_color="#000000", 
             background_color="#ffffff", 
             height=100, 
             width=400, 
             drawing_mode="freedraw", 
-            update_streamlit=True,
-            key="sig"
+            update_streamlit=True, 
+            key="sig_canvas"
         )
         
+        st.caption("💡 캔버스에 서명을 다 그리신 후 **1초 정도 기다렸다가** 제출 버튼을 누르시면 아주 잘 저장됩니다.")
+        
         if st.button("✅ 서명 완료 및 제출", type="primary", use_container_width=True):
-            if in_name:
-                sig_base64 = ""
+            if not in_name:
+                st.warning("이름을 입력하세요.")
+            elif canvas_result.image_data is None:
+                st.warning("⚠️ 서명이 서버로 전송 중입니다. 1초 뒤에 다시 버튼을 눌러주세요.")
+            else:
                 try:
-                    if canvas_result is not None and getattr(canvas_result, 'image_data', None) is not None:
-                        img_array = canvas_result.image_data.astype('uint8')
-                        
-                        # 투명도(Alpha)를 없애고 순백색 배경을 덧대어 확실한 이미지로 변환 (블랙아웃 현상 방지)
+                    img_array = canvas_result.image_data.astype('uint8')
+                    
+                    # 🌟 안전장치: 빈 캔버스를 꼼수 제출하지 못하게 방지
+                    if np.sum(img_array[:, :, 3]) == 0:
+                        st.warning("⚠️ 캔버스가 비어 있습니다. 진짜 펜글씨처럼 서명을 그려주세요!")
+                    else:
+                        # 투명 배경을 흰색으로 덧대어 깨지지 않는 PNG 생성
                         img_rgba = Image.fromarray(img_array, 'RGBA')
                         img_rgb = Image.new("RGB", img_rgba.size, (255, 255, 255))
                         img_rgb.paste(img_rgba, mask=img_rgba.split()[3])
@@ -393,23 +391,22 @@ with col_main:
                         buffered = io.BytesIO()
                         img_rgb.save(buffered, format="PNG")
                         sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                except Exception:
-                    pass
-                
-                new_row = pd.DataFrame([{
-                    "연번": len(st.session_state.registry_df)+1, 
-                    "연수명": selected_training, 
-                    "소속": in_dept, 
-                    "직위": in_pos, 
-                    "이름": in_name, 
-                    "서명 상태": "✅ 완료", 
-                    "서명 이미지": sig_base64, 
-                    "등록 일시": datetime.now().strftime("%m-%d %H:%M")
-                }])
-                st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
-                st.success(f"{in_name}님 등록 완료! (서명이 안전하게 저장되었습니다)")
-            else:
-                st.warning("이름을 입력하세요.")
+                        
+                        new_row = pd.DataFrame([{
+                            "연번": len(st.session_state.registry_df)+1, 
+                            "연수명": selected_training, 
+                            "소속": in_dept, 
+                            "직위": in_pos, 
+                            "이름": in_name, 
+                            "서명 상태": "✅ 완료", 
+                            "서명 이미지": sig_base64, 
+                            "등록 일시": datetime.now().strftime("%m-%d %H:%M")
+                        }])
+                        st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
+                        st.success(f"{in_name} 선생님의 손글씨 서명이 완벽하게 등록되었습니다!")
+                except Exception as e:
+                    st.error(f"서명 처리 중 에러가 발생했습니다: {str(e)}")
+                    
         st.markdown("</div>", unsafe_allow_html=True)
         
         display_df = st.session_state.registry_df.drop(columns=["서명 이미지"], errors="ignore")
@@ -423,8 +420,7 @@ with col_main:
             with col_d2:
                 rows_html = ""
                 for idx, row in st.session_state.registry_df.iterrows():
-                    # 🌟 이미지 태그 CSS 강화 (표 안에서 찌그러지거나 사라지지 않도록 방어)
-                    img_tag = f'<img src="data:image/png;base64,{row["서명 이미지"]}" style="height: 40px; max-width: 150px; object-fit: contain; display: block; margin: 0 auto;"/>' if row.get("서명 이미지") else ""
+                    img_tag = f'<img src="data:image/png;base64,{row["서명 이미지"]}" style="height: 40px; max-width: 140px; object-fit: contain;"/>' if row.get("서명 이미지") else ""
                     rows_html += f"<tr><td>{row['연번']}</td><td>{row['소속']}</td><td>{row['직위']}</td><td>{row['이름']}</td><td>{img_tag}</td></tr>"
 
                 html_registry = f"""<!DOCTYPE html>
@@ -440,7 +436,7 @@ with col_main:
     .info-table td {{ padding: 5px; border: none; }}
     .reg-table {{ width: 100%; border-collapse: collapse; font-size: 14px; text-align: center; table-layout: fixed; }}
     .reg-table th, .reg-table td {{ border: 1px solid #000; padding: 10px; vertical-align: middle; height: 45px; }}
-    .reg-table th {{ background-color: #f2f2f2; font-weight: bold; }}
+    .reg-table th {{ background-color: #f2f2f2; font-weight: bold; border: 1px solid #000; }}
     .col-no {{ width: 8%; }}
     .col-dept {{ width: 25%; }}
     .col-pos {{ width: 15%; }}
