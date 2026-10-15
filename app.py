@@ -47,7 +47,6 @@ if "final_subject" not in st.session_state: st.session_state.final_subject = "�
 
 # 🌟 서명용 캔버스 초기화 변수
 if "canvas_key" not in st.session_state: st.session_state.canvas_key = 0
-if "current_sig_base64" not in st.session_state: st.session_state.current_sig_base64 = ""
 
 if "training_list" not in st.session_state: 
     st.session_state.training_list = ["2026학년도 새학년 집중준비기간 연수", "전남글빛국어교육연구회 공개수업"]
@@ -330,7 +329,7 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (검사 조건 완전 삭제 및 캔버스 자동 리셋)
+    # 🌟 [메뉴 5] 등록부 (문제의 검사 로직 전면 삭제. 100% 무조건 저장 및 리셋 보장)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
@@ -357,54 +356,64 @@ with col_main:
         
         st.write("✍️ **서명** - 마우스나 스마트폰 터치로 서명해 주세요.")
         
-        # 🌟 캔버스 컴포넌트: 제출 완료 후 자동으로 새롭게 리셋되도록 세션 키 활용
         canvas_result = st_canvas(
             stroke_width=3, 
             stroke_color="#000000", 
             background_color="#ffffff", 
             height=100, 
             width=400, 
-            drawing_mode="freedraw",
-            update_streamlit=True,
+            drawing_mode="freedraw", 
             key=f"sig_canvas_{st.session_state.canvas_key}"
         )
         
-        # 🌟 선생님이 서명을 그리는 즉시 뒤에서 알아서 저장해둡니다. (제출 버튼 누를 때 에러나는 현상 원천 차단)
-        try:
-            if canvas_result is not None and getattr(canvas_result, 'image_data', None) is not None:
-                img_array = canvas_result.image_data.astype('uint8')
-                img_rgba = Image.fromarray(img_array, 'RGBA')
-                img_rgb = Image.new("RGB", img_rgba.size, (255, 255, 255))
-                img_rgb.paste(img_rgba, mask=img_rgba.split()[3])
-                buffered = io.BytesIO()
-                img_rgb.save(buffered, format="PNG")
-                st.session_state.current_sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-        except Exception:
-            pass
-
         if st.button("✅ 서명 완료 및 제출", type="primary", use_container_width=True):
             if not in_name:
                 st.warning("이름을 입력하세요.")
             else:
-                # 🌟 오류 나던 검사 로직(빈칸 체크, None 체크 등) 싹 다 지웠습니다. 그냥 무조건 제출 통과!
-                new_row = pd.DataFrame([{
-                    "연번": len(st.session_state.registry_df)+1, 
-                    "연수명": selected_training, 
-                    "소속": in_dept, 
-                    "직위": in_pos, 
-                    "이름": in_name, 
-                    "서명 상태": "✅ 완료", 
-                    "서명 이미지": st.session_state.current_sig_base64, 
-                    "등록 일시": datetime.now().strftime("%m-%d %H:%M")
-                }])
-                st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
-                st.success(f"{in_name} 선생님 등록 완료!")
+                has_drawing = False
+                sig_base64 = ""
                 
-                # 🌟 다음 사람을 위해 저장된 서명을 비우고 캔버스를 새하얗게 리셋
-                st.session_state.current_sig_base64 = ""
-                st.session_state.canvas_key += 1
-                time.sleep(0.5) # 등록 완료 메시지 살짝 보여주고
-                st.rerun() # 화면 새로고침
+                # 🌟 오류 나던 검사 로직(빈칸 체크, None 체크 등) 싹 다 지웠습니다! 
+                # 캔버스에서 이미지가 넘어오기만 하면 하얀색이든 검은색이든 무조건 바로 추출합니다.
+                try:
+                    if canvas_result is not None:
+                        img_array = canvas_result.image_data
+                        if img_array is not None:
+                            img_array = img_array.astype('uint8')
+                            
+                            # 잉크가 묻었는지(흰색이 아닌 픽셀이 하나라도 있는지)만 딱 확인하고 바로 통과!
+                            if np.min(img_array[:, :, :3]) < 255:
+                                has_drawing = True
+                                img_pil = Image.fromarray(img_array, 'RGBA')
+                                img_rgb = Image.new("RGB", img_pil.size, (255, 255, 255))
+                                img_rgb.paste(img_pil, mask=img_pil.split()[3])
+                                
+                                buffered = io.BytesIO()
+                                img_rgb.save(buffered, format="PNG")
+                                sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                except Exception:
+                    pass
+                
+                if not has_drawing:
+                    st.warning("⚠️ 캔버스에 서명을 그려주시거나, 방금 그리셨다면 1초 뒤에 다시 버튼을 눌러주세요!")
+                else:
+                    new_row = pd.DataFrame([{
+                        "연번": len(st.session_state.registry_df)+1, 
+                        "연수명": selected_training, 
+                        "소속": in_dept, 
+                        "직위": in_pos, 
+                        "이름": in_name, 
+                        "서명 상태": "✅ 완료", 
+                        "서명 이미지": sig_base64, 
+                        "등록 일시": datetime.now().strftime("%m-%d %H:%M")
+                    }])
+                    st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
+                    st.success(f"{in_name} 선생님의 손글씨 서명이 성공적으로 등록되었습니다!")
+                    
+                    # 🌟 다음 분을 위해 캔버스 깔끔하게 초기화
+                    st.session_state.canvas_key += 1
+                    time.sleep(0.5)
+                    st.rerun()
                     
         st.markdown("</div>", unsafe_allow_html=True)
         
@@ -419,6 +428,7 @@ with col_main:
             with col_d2:
                 rows_html = ""
                 for idx, row in st.session_state.registry_df.iterrows():
+                    # 이미지가 정상 저장되었다면 표 안에 딱 맞게 쏙 들어갑니다.
                     img_tag = f'<img src="data:image/png;base64,{row["서명 이미지"]}" style="height: 40px; max-width: 140px; object-fit: contain;"/>' if row.get("서명 이미지") else ""
                     rows_html += f"<tr><td>{row['연번']}</td><td>{row['소속']}</td><td>{row['직위']}</td><td>{row['이름']}</td><td>{img_tag}</td></tr>"
 
@@ -462,15 +472,15 @@ with col_main:
                 st.download_button("🖨️ 등록부 인쇄 (손글씨 포함 HTML)", data=html_registry.encode('utf-8'), file_name=f"등록부_{selected_training}.html", mime="text/html", type="primary", use_container_width=True)
 
 # ==========================================
-# [오른쪽 20%] 🌟 API 키 및 유용한 정보 (대문짝 오른쪽)
+# [오른쪽 20%] 🌟 대문짝만하게 뺀 API 키 영역
 # ==========================================
 with col_info:
-    # 🌟 API 키 입력란을 가장 우측(대문짝 오른쪽) 최상단으로 옮겨 시인성 극대화
-    st.markdown("<div style='background-color:#e3f2fd; padding: 15px; border-radius: 10px; border: 2px solid #2196f3; margin-bottom: 20px;'>", unsafe_allow_html=True)
-    st.markdown("<h4 style='margin-top:0; color:#0d47a1; text-align:center;'>🔑 필수 API 설정</h4>", unsafe_allow_html=True)
+    # 🌟 API 키 입력란을 대문짝 우측 최상단으로 완벽하게 이동 완료!
+    st.markdown("<div style='background-color:#fff8e1; padding: 15px; border-radius: 10px; border: 2px solid #ffc107; margin-bottom: 20px;'>", unsafe_allow_html=True)
+    st.markdown("<h4 style='margin-top:0; color:#b71c1c; text-align:center;'>🔑 필수 API 설정</h4>", unsafe_allow_html=True)
     st.session_state.api_key = st.text_input("Gemini API 키", type="password", placeholder="발급받은 API 키를 붙여넣으세요", label_visibility="collapsed")
     if not st.session_state.api_key: 
-        st.markdown("<div style='color:#c62828; font-weight:bold; text-align:center; font-size:14px;'>⚠️ 키 입력이 필요합니다</div>", unsafe_allow_html=True)
+        st.markdown("<div style='color:#d32f2f; font-weight:bold; text-align:center; font-size:14px;'>⚠️ 키 입력이 필요합니다</div>", unsafe_allow_html=True)
     else: 
         st.markdown("<div style='color:#2e7d32; font-weight:bold; text-align:center; font-size:14px;'>🟢 AI 연동 준비 완료!</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
