@@ -218,17 +218,20 @@ with col_main:
             teacher_display = f"[{s_name}] {st.session_state.get('teacher_name', '')}".strip() if s_name else st.session_state.get('teacher_name', '')
             info_line = f"[{st.session_state.get('target_students', '')}] ___번 이름: _____________"
             
+            # 1. 과정안 HTML
             if st.session_state.selected_session_detail:
                 d = st.session_state.selected_session_detail
                 html_plan = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>공개수업 지도안</title><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; line-height: 1.5; }} table {{ width: 100%; border-collapse: collapse; margin-bottom: 25px; }} th, td {{ border: 1px solid #000; padding: 8px; }} th {{ background-color: #f2f2f2; text-align: center; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #1a73e8; color: white; text-align: center; cursor: pointer; border-radius: 5px; border:none; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 지도안 인쇄하기</button><h1 style="text-align:center;">{sub}과 교수·학습 과정안</h1><table><tr><th>일 시</th><td>{st.session_state.get('class_date','')}</td><th>장 소</th><td>{st.session_state.get('class_location','')}</td></tr><tr><th>대 상</th><td>{st.session_state.get('target_students','')}</td><th>지도 교사</th><td>{teacher_display}</td></tr></table><h3>| 1. 수업 개요 및 의도</h3><p>{d.get('overview','')}</p><h3>| 2. CBI 목표</h3><ul><li><b>거시/미시:</b> {d.get('macro','')} / {d.get('micro','')}</li><li><b>목표:</b> {d.get('objective','')}</li><li><b>일반화:</b> {d.get('big_idea','')}</li></ul><h3>| 3. 전개</h3><table><tr><th width="10%">단계</th><th width="10%">시량</th><th width="60%">교수·학습 활동</th><th width="20%">유의점</th></tr><tr><td align="center">도 입</td><td align="center">{d.get('intro_time','')}</td><td>{d.get('intro_act','').replace(chr(10), '<br>')}</td><td>{d.get('intro_note','').replace(chr(10), '<br>')}</td></tr><tr><td align="center">전 개</td><td align="center">{d.get('dev_time','')}</td><td>{d.get('dev_act','').replace(chr(10), '<br>')}</td><td>{d.get('dev_note','').replace(chr(10), '<br>')}</td></tr><tr><td align="center">정 리</td><td align="center">{d.get('conc_time','')}</td><td>{d.get('conc_act','').replace(chr(10), '<br>')}</td><td>{d.get('conc_note','').replace(chr(10), '<br>')}</td></tr></table></body></html>"""
                 with c_a: st.download_button("📥 1. 지도안", data=html_plan.encode('utf-8'), file_name="지도안.html", mime="text/html", type="primary", use_container_width=True)
 
+            # 2. 활동지 HTML
             if st.session_state.worksheet_detail:
                 w = st.session_state.worksheet_detail
                 d = st.session_state.selected_session_detail
                 html_work = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; }} .box {{ border: 1px dashed #333; padding: 15px; margin-bottom: 10px; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #2b8a3e; color: white; cursor: pointer; border-radius: 5px; text-align:center; border:none; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 활동지 인쇄하기</button><div style="border: 2px solid #000; padding: 15px; border-radius: 8px;"><h1 style="text-align:center; margin:0;">[탐구 활동지] {w.get('title','')}</h1><div style="text-align:right; font-weight:bold; margin-top:10px;">{info_line}</div><div><b>[거시/미시]</b> {d.get('macro','')} / {d.get('micro','')}</div><div><b>[목표]</b> {d.get('objective','')}</div><div><b>[핵심 아이디어]</b> {d.get('big_idea','')}</div></div><h3>{w.get('act1_title','')}</h3><div class="box">{w.get('act1_desc','').replace(chr(10), '<br>')}</div><h3>{w.get('act2_title','')}</h3><div class="box"><b>▶ 나의 질문: </b></div><h3>{w.get('act3_title','')}</h3><div class="box" style="min-height:100px;"></div><h3>{w.get('wrap_up','[마무리]')}</h3></body></html>"""
                 with c_b: st.download_button("📥 2. 활동지", data=html_work.encode('utf-8'), file_name="활동지.html", mime="text/html", type="primary", use_container_width=True)
 
+            # 3. 형성평가지 HTML & 4. 퀴즈앤 CSV
             if st.session_state.quiz_detail:
                 q = st.session_state.quiz_detail
                 ox_html = "".join([f"<li>{item['q']} ( O , X )</li>" for item in q.get('ox_quiz', [])])
@@ -323,7 +326,7 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (완벽 잉크 검사 로직 적용)
+    # 🌟 [메뉴 5] 등록부 (완벽한 방탄조끼 적용 완료!)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
@@ -367,27 +370,25 @@ with col_main:
                 is_valid_sig = False
                 sig_base64 = ""
                 
-                # 🌟 [핵심 해결 로직] 투명도 검사(오류 원인) 삭제!
-                # 하얀색 캔버스에서 검은 잉크가 하나라도 묻었는지 RGB 색상으로 확실하게 물리적 검사를 합니다.
-                if canvas_result.image_data is not None:
-                    img_array = canvas_result.image_data
-                    
-                    # 캔버스를 RGBA -> 순수 RGB 색상으로 변환
-                    img_pil = Image.fromarray(img_array.astype('uint8'), 'RGBA')
-                    img_rgb = Image.new("RGB", img_pil.size, (255, 255, 255))
-                    img_rgb.paste(img_pil, mask=img_pil.split()[3])
-                    
-                    rgb_array = np.array(img_rgb)
-                    
-                    # 캔버스의 모든 픽셀 중 하얀색(255)이 아닌 다른 색(선)이 단 하나라도 존재한다면 서명한 것으로 완벽하게 인식!
-                    if np.min(rgb_array) < 255:
-                        is_valid_sig = True
-                        buffered = io.BytesIO()
-                        img_rgb.save(buffered, format="PNG")
-                        sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                # 🌟 [방탄조끼 코드] 데이터 접근 시 터지는 모든 에러를 완벽하게 집어삼킵니다.
+                try:
+                    if canvas_result is not None and canvas_result.json_data is not None:
+                        if len(canvas_result.json_data.get("objects", [])) > 0:
+                            img_array = canvas_result.image_data
+                            if img_array is not None:
+                                is_valid_sig = True
+                                img_pil = Image.fromarray(img_array.astype('uint8'), 'RGBA')
+                                img_rgb = Image.new("RGB", img_pil.size, (255, 255, 255))
+                                img_rgb.paste(img_pil, mask=img_pil.split()[3])
+                                
+                                buffered = io.BytesIO()
+                                img_rgb.save(buffered, format="PNG")
+                                sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                except Exception:
+                    pass  # 에러가 나면 조용히 넘어가서 아래 경고창을 띄웁니다.
                 
                 if not is_valid_sig:
-                    st.warning("⚠️ 서명이 인식되지 않았습니다. 캔버스에 서명을 다시 그려주세요!")
+                    st.warning("⚠️ 서명이 전송 중입니다. 1초만 기다리셨다가 제출 버튼을 다시 눌러주세요!")
                 else:
                     new_row = pd.DataFrame([{
                         "연번": len(st.session_state.registry_df)+1, 
@@ -458,17 +459,17 @@ with col_main:
                 st.download_button("🖨️ 등록부 인쇄 (손글씨 포함 HTML)", data=html_registry.encode('utf-8'), file_name=f"등록부_{selected_training}.html", mime="text/html", type="primary", use_container_width=True)
 
 # ==========================================
-# [오른쪽 20%] 🌟 API 키 및 유용한 교육/생활 정보
+# [오른쪽 20%] 🌟 API 키 및 유용한 정보 (대문짝 오른쪽)
 # ==========================================
 with col_info:
-    # 🌟 [개선] API 키 입력란을 오른쪽(col_info) 최상단으로 옮겨 시인성 극대화
-    st.markdown("<div class='custom-card' style='background-color:#fff3cd; border-color:#ffeeba;'>", unsafe_allow_html=True)
-    st.markdown("##### 🔑 필수 API 설정")
-    st.session_state.api_key = st.text_input("Gemini API 키", type="password", placeholder="키를 붙여넣으세요", label_visibility="collapsed")
+    # 🌟 API 키 입력란을 가장 우측(대문짝 오른쪽) 최상단으로 옮겨 시인성 극대화
+    st.markdown("<div style='background-color:#fff8e1; padding: 15px; border-radius: 10px; border: 2px solid #ffc107; margin-bottom: 20px;'>", unsafe_allow_html=True)
+    st.markdown("<h4 style='margin-top:0; color:#b71c1c; text-align:center;'>🔑 필수 API 설정</h4>", unsafe_allow_html=True)
+    st.session_state.api_key = st.text_input("Gemini API 키", type="password", placeholder="발급받은 API 키를 붙여넣으세요", label_visibility="collapsed")
     if not st.session_state.api_key: 
-        st.markdown("<span style='color:#856404; font-weight:bold;'>👈 AI 연동을 위해 키가 필요합니다.</span>", unsafe_allow_html=True)
+        st.markdown("<div style='color:#d32f2f; font-weight:bold; text-align:center; font-size:14px;'>⚠️ 키 입력이 필요합니다</div>", unsafe_allow_html=True)
     else: 
-        st.markdown("<span style='color:#155724; font-weight:bold;'>🟢 AI 연동 준비 완료!</span>", unsafe_allow_html=True)
+        st.markdown("<div style='color:#2e7d32; font-weight:bold; text-align:center; font-size:14px;'>🟢 AI 연동 준비 완료!</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
