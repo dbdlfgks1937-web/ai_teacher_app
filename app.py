@@ -2,6 +2,7 @@ import streamlit as st
 import pdfplumber
 import json
 import io
+import os
 import time
 import base64
 import numpy as np
@@ -10,6 +11,40 @@ from datetime import datetime
 from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 from google import genai
+
+# ---------------------------------------------------------
+# 🌟 [미니 데이터베이스] 새로고침해도 날아가지 않게 로컬 파일로 영구 보관
+# ---------------------------------------------------------
+TRAINING_FILE = "training_data.json"
+REGISTRY_FILE = "registry.csv"
+
+def load_training_data():
+    if os.path.exists(TRAINING_FILE):
+        with open(TRAINING_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    else:
+        # 파일이 없으면 기본 연수 세팅 생성
+        default_data = {
+            "2026학년도 새학년 집중준비기간 연수": {"date": "2026. 02. 11. 14:00", "loc": "본관 대강당"},
+            "전남글빛국어교육연구회 공개수업": {"date": "2026. 10. 14. 14:00", "loc": "1학년 6반 교실"}
+        }
+        save_training_data(default_data)
+        return default_data
+
+def save_training_data(data):
+    with open(TRAINING_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def load_registry():
+    if os.path.exists(REGISTRY_FILE):
+        return pd.read_csv(REGISTRY_FILE)
+    else:
+        df = pd.DataFrame(columns=["연번", "연수명", "일시", "장소", "소속", "직위", "이름", "서명 상태", "서명 이미지", "등록 일시"])
+        save_registry(df)
+        return df
+
+def save_registry(df):
+    df.to_csv(REGISTRY_FILE, index=False, encoding="utf-8-sig")
 
 # ---------------------------------------------------------
 # 1. 화면 기본 설정 & 외부 CSS 파일 불러오기
@@ -36,7 +71,7 @@ def load_css(file_name):
         pass
 load_css("style.css")
 
-# 세션 상태 초기화
+# 세션 상태(임시 메모리) 초기화
 if "current_page" not in st.session_state: st.session_state.current_page = "과정안 생성"
 if "extracted_text" not in st.session_state: st.session_state.extracted_text = ""
 if "proposed_sessions" not in st.session_state: st.session_state.proposed_sessions = None
@@ -44,12 +79,13 @@ if "selected_session_detail" not in st.session_state: st.session_state.selected_
 if "worksheet_detail" not in st.session_state: st.session_state.worksheet_detail = None
 if "quiz_detail" not in st.session_state: st.session_state.quiz_detail = None
 if "final_subject" not in st.session_state: st.session_state.final_subject = "공통국어"
-
-# 🌟 서명용 캔버스 초기화 키
 if "canvas_key" not in st.session_state: st.session_state.canvas_key = 0
 
+# 🌟 앱 시작 시 디스크(파일)에서 데이터를 쫙 불러와서 세션에 덮어씌웁니다. (새로고침 방어)
+if "training_data" not in st.session_state: 
+    st.session_state.training_data = load_training_data()
 if "registry_df" not in st.session_state: 
-    st.session_state.registry_df = pd.DataFrame(columns=["연번", "연수명", "일시", "장소", "소속", "직위", "이름", "서명 상태", "서명 이미지", "등록 일시"])
+    st.session_state.registry_df = load_registry()
 
 # 상단 헤더
 st.title("🚀 AI 에듀테크 수퍼 앱 (feat. 개념기반 교육과정)")
@@ -321,34 +357,32 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (연수명+일시+장소 세트 관리 및 HTML 인쇄 개선)
+    # 🌟 [메뉴 5] 등록부 (완벽한 파일 영구 저장 및 드롭다운 오류 해결)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
-        
-        # 🌟 데이터 구조 변경: 연수명, 일시, 장소를 딕셔너리로 세트 관리
-        if "training_data" not in st.session_state:
-            st.session_state.training_data = {
-                "2026학년도 새학년 집중준비기간 연수": {"date": "2026. 02. 11. 14:00", "loc": "본관 대강당"},
-                "전남글빛국어교육연구회 공개수업": {"date": "2026. 10. 14. 14:00", "loc": "1학년 6반 교실"}
-            }
 
         with st.expander("⚙️ 연수 관리자 설정 (비밀번호: 1234)"):
             if st.text_input("비밀번호", type="password", key="reg_pw") == "1234":
                 st.markdown("**새로운 연수 개설**")
                 c_new1, c_new2, c_new3 = st.columns([2, 1, 1])
-                with c_new1: new_title = st.text_input("연수명")
-                with c_new2: new_date = st.text_input("일시", placeholder="예) 10. 20. 15:00")
-                with c_new3: new_loc = st.text_input("장소", placeholder="예) 시청각실")
+                # 🌟 고유 키를 부여해서 입력값이 꼬이지 않도록 완벽 분리
+                with c_new1: new_title = st.text_input("연수명", key="new_title_input")
+                with c_new2: new_date = st.text_input("일시", placeholder="예) 10. 20. 15:00", key="new_date_input")
+                with c_new3: new_loc = st.text_input("장소", placeholder="예) 시청각실", key="new_loc_input")
+                
                 if st.button("➕ 연수 추가하기"):
                     if new_title:
+                        # 파일에 영구 저장 (드롭다운 즉시 반영)
                         st.session_state.training_data[new_title] = {"date": new_date, "loc": new_loc}
-                        st.success(f"'{new_title}' 추가 완료!")
-                        time.sleep(0.5)
+                        save_training_data(st.session_state.training_data)
+                        
+                        st.success(f"'{new_title}' 연수가 성공적으로 추가되었습니다! (새로고침해도 지워지지 않습니다)")
+                        time.sleep(1)
                         st.rerun()
         
         st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
-        # 🌟 등록 화면: 선택 시 일시와 장소가 자동으로 따라옴
+        # 저장된 리스트를 가져와서 드롭다운 메뉴 렌더링
         selected_training = st.selectbox("📌 참여할 연수 선택", list(st.session_state.training_data.keys()))
         
         reg_date = st.session_state.training_data[selected_training]["date"]
@@ -385,7 +419,6 @@ with col_main:
                 sig_base64 = ""
                 img_array = canvas_result.image_data
                 
-                # 배경이 완전히 비어있는지(흰색/투명) 확인
                 if np.min(img_array[:, :, :3]) < 255:
                     img_pil = Image.fromarray(img_array.astype('uint8'), 'RGBA')
                     img_rgb = Image.new("RGB", img_pil.size, (255, 255, 255))
@@ -396,7 +429,7 @@ with col_main:
                     sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
                     
                     new_row = pd.DataFrame([{
-                        "연번": len(st.session_state.registry_df)+1, 
+                        "연번": len(st.session_state.registry_df[st.session_state.registry_df["연수명"] == selected_training])+1, 
                         "연수명": selected_training, 
                         "일시": reg_date,
                         "장소": reg_loc,
@@ -407,18 +440,20 @@ with col_main:
                         "서명 이미지": sig_base64, 
                         "등록 일시": datetime.now().strftime("%m-%d %H:%M")
                     }])
-                    st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
-                    st.success(f"{in_name} 선생님의 손글씨 서명이 완벽하게 등록되었습니다!")
                     
+                    # 🌟 서명 완료 시 CSV 파일로 영구 저장!
+                    st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
+                    save_registry(st.session_state.registry_df)
+                    
+                    st.success(f"{in_name} 선생님의 손글씨 서명이 완벽하게 등록되었습니다! (새로고침해도 보관됩니다)")
                     st.session_state.canvas_key += 1
-                    time.sleep(0.5)
+                    time.sleep(1)
                     st.rerun()
                 else:
-                    st.warning("⚠️ 서명이 인식되지 않았습니다. 캔버스에 서명을 다시 그려주세요!")
+                    st.warning("⚠️ 서명이 인식되지 않았습니다. 캔버스에 펜으로 서명을 남겨주세요!")
                     
         st.markdown("</div>", unsafe_allow_html=True)
         
-        # 화면 출력용 데이터 프레임 (이미지는 숨김)
         display_df = st.session_state.registry_df[st.session_state.registry_df["연수명"] == selected_training]
         st.dataframe(display_df.drop(columns=["서명 이미지", "연수명", "일시", "장소"], errors="ignore"), hide_index=True, use_container_width=True)
         
@@ -476,7 +511,6 @@ with col_main:
 # [오른쪽 20%] 🌟 API 키 및 유용한 정보
 # ==========================================
 with col_info:
-    # 🌟 API 키 입력란 (우측 상단 대문짝 배치 유지)
     st.markdown("<div style='background-color:#e3f2fd; padding: 15px; border-radius: 10px; border: 2px solid #2196f3; margin-bottom: 20px;'>", unsafe_allow_html=True)
     st.markdown("<h4 style='margin-top:0; color:#0d47a1; text-align:center;'>🔑 API 키 입력 (필수)</h4>", unsafe_allow_html=True)
     st.session_state.api_key = st.text_input("Gemini API 키", type="password", placeholder="여기에 키를 붙여넣으세요", label_visibility="collapsed")
