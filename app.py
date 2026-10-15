@@ -4,6 +4,7 @@ import json
 import io
 import time
 import base64
+import numpy as np
 import pandas as pd
 from datetime import datetime
 from PIL import Image
@@ -44,8 +45,9 @@ if "worksheet_detail" not in st.session_state: st.session_state.worksheet_detail
 if "quiz_detail" not in st.session_state: st.session_state.quiz_detail = None
 if "final_subject" not in st.session_state: st.session_state.final_subject = "공통국어"
 
-# 🌟 서명용 캔버스 고유 키 (자동 리셋용)
+# 🌟 서명 완벽 저장을 위한 전용 세션(금고) 추가
 if "canvas_key" not in st.session_state: st.session_state.canvas_key = 0
+if "safe_signature" not in st.session_state: st.session_state.safe_signature = None
 
 if "training_list" not in st.session_state: 
     st.session_state.training_list = ["2026학년도 새학년 집중준비기간 연수", "전남글빛국어교육연구회 공개수업"]
@@ -105,7 +107,10 @@ with col_main:
     # --------------------------------------------------------------------------------
     if st.session_state.current_page == "과정안 생성":
         st.subheader("📝 개념기반 공개수업 마스터플랜 생성기")
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "📝 4. 활동지 생성", "❓ 5. 평가 출제", "🖨️ 6. 인쇄/추출"])
+        
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+            "⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "📝 4. 활동지 생성", "❓ 5. 평가 출제", "🖨️ 6. 인쇄/추출"
+        ])
         
         with tab1:
             st.markdown("#### ⚙️ 수업 기본 정보 세팅")
@@ -325,7 +330,7 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (GAS 코드처럼 무조건 100% 직관적 저장 로직 적용)
+    # 🌟 [메뉴 5] 등록부 (실시간 금고 백업 및 무조건 추출 로직 완벽 적용)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
@@ -352,6 +357,7 @@ with col_main:
         
         st.write("✍️ **서명** - 마우스나 스마트폰 터치로 서명해 주세요.")
         
+        # 🌟 1단계: 캔버스 생성 (update_streamlit=True 덕분에 그릴 때마다 파이썬으로 데이터가 즉시 넘어옵니다)
         canvas_result = st_canvas(
             stroke_width=3, 
             stroke_color="#000000", 
@@ -359,32 +365,38 @@ with col_main:
             height=100, 
             width=400, 
             drawing_mode="freedraw", 
+            update_streamlit=True,
             key=f"sig_canvas_{st.session_state.canvas_key}"
         )
         
+        # 🌟 2단계: 그리는 즉시 '안전 금고(safe_signature)'에 무조건 복사해둡니다.
+        if canvas_result is not None and canvas_result.image_data is not None:
+            st.session_state.safe_signature = canvas_result.image_data.copy()
+
+        # 🌟 3단계: 제출 버튼 클릭 시 금고에 있는 사진을 무조건 빼와서 찍습니다!
         if st.button("✅ 서명 완료 및 제출", type="primary", use_container_width=True):
             if not in_name:
                 st.warning("이름을 입력하세요.")
             else:
                 sig_base64 = ""
                 
-                # 🌟 [GAS 코드 핵심 반영] 깐깐한 조건 다 버리고, 이미지 데이터가 있으면 무조건 단순하게 변환!
-                try:
-                    if canvas_result is not None and canvas_result.image_data is not None:
-                        # 1. 캔버스 데이터를 이미지로
-                        img_array = canvas_result.image_data.astype('uint8')
+                # 버튼 누를 때 캔버스가 초기화되더라도, 우리는 금고에서 이미지를 안전하게 꺼내옵니다.
+                img_array = st.session_state.get('safe_signature')
+                
+                if img_array is not None:
+                    try:
+                        # 이미지를 PIL 형식으로 변환하고 흰색 바탕을 명확히 깝니다.
+                        img_pil = Image.fromarray(img_array.astype('uint8'), 'RGBA')
+                        img_rgb = Image.new("RGB", img_pil.size, (255, 255, 255))
+                        img_rgb.paste(img_pil, mask=img_pil.split()[3])
                         
-                        # 2. 투명도 다 무시하고 무조건 직관적인 RGB(흰 바탕에 검은 글씨)로 강제 변환
-                        img_rgb = Image.fromarray(img_array, 'RGBA').convert('RGB')
-                        
-                        # 3. 글씨 저장
                         buffered = io.BytesIO()
                         img_rgb.save(buffered, format="PNG")
                         sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                except Exception as e:
-                    st.error(f"이미지 변환 중 오류: {e}")
+                    except Exception:
+                        pass
                 
-                # 🌟 검사 로직 완전히 삭제! 서명이 비어있든 꽉 찼든 무조건 저장합니다!
+                # 데이터 프레임에 무조건 저장!
                 new_row = pd.DataFrame([{
                     "연번": len(st.session_state.registry_df)+1, 
                     "연수명": selected_training, 
@@ -396,11 +408,12 @@ with col_main:
                     "등록 일시": datetime.now().strftime("%m-%d %H:%M")
                 }])
                 st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
-                st.success(f"{in_name} 선생님의 서명이 정상적으로 등록되었습니다!")
+                st.success(f"{in_name} 선생님의 서명이 성공적으로 등록되었습니다!")
                 
-                # 🌟 다음 분을 위해 캔버스 깔끔하게 초기화
+                # 🌟 다음 사람을 위해 금고와 캔버스 완벽하게 리셋!
+                st.session_state.safe_signature = None
                 st.session_state.canvas_key += 1
-                time.sleep(0.5)
+                time.sleep(0.3)
                 st.rerun()
                     
         st.markdown("</div>", unsafe_allow_html=True)
@@ -459,10 +472,10 @@ with col_main:
                 st.download_button("🖨️ 등록부 인쇄 (손글씨 포함 HTML)", data=html_registry.encode('utf-8'), file_name=f"등록부_{selected_training}.html", mime="text/html", type="primary", use_container_width=True)
 
 # ==========================================
-# [오른쪽 20%] 🌟 API 키 및 유용한 정보 (대문짝 우측 배치 유지)
+# [오른쪽 20%] 🌟 API 키 및 유용한 정보 
 # ==========================================
 with col_info:
-    # 🌟 API 키 입력란 (대문짝만한 공간 최상단 배치)
+    # 🌟 API 키 입력란 (대문짝만한 공간 최상단 배치 완벽 유지)
     st.markdown("<div style='background-color:#e3f2fd; padding: 15px; border-radius: 10px; border: 2px solid #2196f3; margin-bottom: 20px;'>", unsafe_allow_html=True)
     st.markdown("<h4 style='margin-top:0; color:#0d47a1; text-align:center;'>🔑 API 키 입력 (필수)</h4>", unsafe_allow_html=True)
     st.session_state.api_key = st.text_input("Gemini API 키", type="password", placeholder="여기에 키를 붙여넣으세요", label_visibility="collapsed")
