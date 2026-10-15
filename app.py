@@ -27,6 +27,7 @@ if "extracted_text" not in st.session_state: st.session_state.extracted_text = "
 if "proposed_sessions" not in st.session_state: st.session_state.proposed_sessions = None
 if "selected_session_detail" not in st.session_state: st.session_state.selected_session_detail = None
 if "worksheet_detail" not in st.session_state: st.session_state.worksheet_detail = None
+if "quiz_detail" not in st.session_state: st.session_state.quiz_detail = None # 형성평가 세션 추가
 
 if "training_list" not in st.session_state: 
     st.session_state.training_list = ["2026학년도 새학년 집중준비기간 연수", "전남글빛국어교육연구회 공개수업"]
@@ -66,7 +67,7 @@ with col_menu:
             st.rerun()
             
     st.markdown("<div class='menu-title'>📚 수업 지원</div>", unsafe_allow_html=True)
-    nav_button("📝 과정안/활동지 생성", "과정안 생성")
+    nav_button("📝 과정안/학습지 출제", "과정안 생성")
     
     st.markdown("<div class='menu-title'>📝 평가/기록 지원</div>", unsafe_allow_html=True)
     nav_button("💡 학생 세특 초안", "세특 초안")
@@ -77,16 +78,16 @@ with col_menu:
 
 with col_main:
     if st.session_state.current_page == "과정안 생성":
-        st.subheader("📝 개념기반 공개수업 과정안 & 활동지 생성기")
-        # 5단계 탭으로 완벽하게 분리
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "📝 4. 활동지 생성", "🖨️ 5. 인쇄 출력"
+        st.subheader("📝 개념기반 공개수업 과정안 & 학습지 자동 생성기")
+        # 6단계 탭으로 완벽하게 분리 (평가 출제 추가)
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+            "⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "📝 4. 활동지 생성", "❓ 5. 평가 출제", "🖨️ 6. 인쇄 출력"
         ])
         
-        # [탭 1] 기본 설정 및 파일 업로드 (가운데로 이동)
+        # [탭 1] 기본 설정 및 파일 업로드
         with tab1:
             st.markdown("#### ⚙️ 수업 기본 정보 세팅")
-            st.info("입력하신 정보는 인쇄될 지도안과 학생 활동지에 자동으로 반영됩니다.")
+            st.info("입력하신 정보는 인쇄될 지도안, 학생 활동지, 형성평가지에 자동으로 반영됩니다.")
             
             c1, c2 = st.columns(2)
             with c1:
@@ -124,7 +125,7 @@ with col_main:
             else:
                 st.info("1단계 탭에서 API 키를 입력하고 교과서 PDF를 업로드해 주세요.")
                 
-        # [탭 3] 공개수업 지도안 생성 (개념기반 프롬프트 대폭 강화)
+        # [탭 3] 공개수업 지도안 생성
         with tab3:
             if st.session_state.proposed_sessions:
                 options = {f"{s['session']}차시 - {s['title']}": s for s in st.session_state.proposed_sessions}
@@ -176,15 +177,53 @@ with col_main:
                         try:
                             res3 = call_gemini_robust(st.session_state.api_key, prompt3)
                             st.session_state.worksheet_detail = json.loads(res3.replace("```json", "").replace("```", "").strip())
-                            st.success("활동지 완성! 5단계(인쇄) 탭으로 이동하세요.")
+                            st.success("활동지 완성! 5단계 탭으로 이동하세요.")
                         except Exception as e:
                             st.error(str(e))
             else:
                 st.warning("3단계 지도안 생성을 완료해 주세요.")
 
-        # [탭 5] 인쇄 출력 (입력된 정보 자동 적용)
+        # [탭 5] 형성평가 문제 출제 (신규 추가)
         with tab5:
-            col_a, col_b = st.columns(2)
+            if st.session_state.selected_session_detail:
+                if st.button("❓ 다유형 형성평가 문제 출제", type="primary"):
+                    with st.spinner("O/X, 초성, 어휘, 4지선다 등 다양한 유형의 문제를 출제하고 있습니다..."):
+                        prompt4 = f"""당신은 {st.session_state.selected_subject} 수석 교사이자 평가 전문가입니다.
+앞서 설계한 '{st.session_state.selected_session_detail['title']}' 수업의 내용과 핵심 아이디어를 점검할 수 있는 형성평가 문제를 출제해 주세요.
+단순 암기 확인부터 개념 적용까지 다양하게 구성하세요.
+반드시 아래 JSON 구조로 답변하세요:
+{{
+  "title": "형성평가지 제목",
+  "ox_quiz": [
+    {{"q": "질문 내용", "a": "O 또는 X", "exp": "해설"}}
+  ],
+  "initial_quiz": [
+    {{"q": "질문 내용 (초성 제시)", "a": "정답단어", "exp": "해설"}}
+  ],
+  "vocab_quiz": [
+    {{"q": "질문 내용", "a": "정답단어", "exp": "해설"}}
+  ],
+  "mcq": [
+    {{"q": "질문 내용", "options": ["보기1", "보기2", "보기3", "보기4"], "a": "정답번호(예: 1)", "exp": "해설"}}
+  ]
+}}
+[수업 목표 및 핵심 아이디어 참고]
+목표: {st.session_state.selected_session_detail['objective']}
+아이디어: {st.session_state.selected_session_detail['big_idea']}
+"""
+                        try:
+                            res4 = call_gemini_robust(st.session_state.api_key, prompt4)
+                            st.session_state.quiz_detail = json.loads(res4.replace("```json", "").replace("```", "").strip())
+                            st.success("형성평가 출제 완료! 6단계(인쇄) 탭으로 이동하세요.")
+                        except Exception as e:
+                            st.error(str(e))
+            else:
+                st.warning("3단계 지도안 생성을 완료해 주세요.")
+
+        # [탭 6] 인쇄 출력 (3가지 통합 출력)
+        with tab6:
+            # 3개 파일 다운로드 버튼 배치를 위해 3컬럼 생성
+            col_a, col_b, col_c = st.columns(3)
             
             sub = st.session_state.get('selected_subject', '')
             c_date = st.session_state.get('class_date', '')
@@ -192,7 +231,7 @@ with col_main:
             t_stud = st.session_state.get('target_students', '')
             t_name = st.session_state.get('teacher_name', '')
             
-            # 1. 지도안 HTML 다운로드
+            # 1. 지도안 HTML
             if st.session_state.selected_session_detail:
                 d = st.session_state.selected_session_detail
                 html_plan = f"""<!DOCTYPE html>
@@ -222,20 +261,11 @@ with col_main:
 <body>
     <button class="print-btn" onclick="window.print()">🖨️ 지도안 인쇄하기</button>
     <h1>{sub}과 교수·학습 과정안</h1>
-    
     <table class="header-table">
-        <tr>
-            <th>일 시</th><td>{c_date}</td>
-            <th>장 소</th><td>{c_loc}</td>
-        </tr>
-        <tr>
-            <th>대 상</th><td>{t_stud}</td>
-            <th>지도 교사</th><td>{t_name}</td>
-        </tr>
+        <tr><th>일 시</th><td>{c_date}</td><th>장 소</th><td>{c_loc}</td></tr>
+        <tr><th>대 상</th><td>{t_stud}</td><th>지도 교사</th><td>{t_name}</td></tr>
     </table>
-
-    <h2>| 1. 수업의 개요 및 개념기반 설계 의도</h2>
-    <p>{d.get('overview', '')}</p>
+    <h2>| 1. 수업의 개요 및 개념기반 설계 의도</h2><p>{d.get('overview', '')}</p>
     <h2>| 2. 개념기반 교육과정(CBI) 목표 설정</h2>
     <ul>
         <li><b>거시 개념:</b> {d.get('macro', '')} &nbsp;&nbsp; <b>미시 개념:</b> {d.get('micro', '')}</li>
@@ -252,9 +282,9 @@ with col_main:
 </body>
 </html>"""
                 with col_a:
-                    st.download_button("📥 [교사용] 지도안 다운로드", data=html_plan.encode('utf-8'), file_name=f"개념기반_과정안_{d.get('session')}차시.html", mime="text/html", type="primary", use_container_width=True)
+                    st.download_button("📥 1. 과정안 HTML", data=html_plan.encode('utf-8'), file_name=f"과정안_{d.get('session')}차시.html", mime="text/html", type="primary", use_container_width=True)
 
-            # 2. 활동지 HTML 다운로드
+            # 2. 활동지 HTML
             if st.session_state.worksheet_detail:
                 w = st.session_state.worksheet_detail
                 d = st.session_state.selected_session_detail
@@ -278,32 +308,94 @@ with col_main:
 </style>
 </head>
 <body>
-    <button class="print-btn" onclick="window.print()">🖨️ A4 활동지 인쇄하기</button>
+    <button class="print-btn" onclick="window.print()">🖨️ 활동지 인쇄하기</button>
     <div class="header-box">
-        <h1>[개념기반 탐구 활동지] {w.get('title', '')}</h1>
+        <h1>[탐구 활동지] {w.get('title', '')}</h1>
         <div class="info-line">[{t_stud}] ___번 이름: _____________</div>
         <div class="concept-line"><b>[거시 개념]</b> {d.get('macro', '')} &nbsp;&nbsp; <b>[미시 개념]</b> {d.get('micro', '')}</div>
         <div class="concept-line"><b>[학습 목표]</b> {d.get('objective', '')}</div>
         <div class="concept-line"><b>★ [핵심 아이디어]</b> {d.get('big_idea', '')}</div>
     </div>
-    
-    <h3>{w.get('act1_title', '[활동 1]')}</h3>
-    <div class="box">{w.get('act1_desc', '수업 중 다룬 내용을 분석하여 정리해 봅시다.').replace(chr(10), '<br>')}</div>
-    
-    <h3>{w.get('act2_title', '[활동 2] 생각을 여는 질문 만들기')}</h3>
-    <p>※ 정답이 정해진 질문 대신, 친구들과 토론할 수 있는 깊이 있는 질문을 만들어 보세요.</p>
-    <div class="box"><b>▶ 나의 탐구 질문: </b></div>
-
-    <h3>{w.get('act3_title', '[활동 3] 나만의 관점 세우기')}</h3>
-    <p>[도움말] 3단 마법의 문장 틀을 활용해 보세요!<br>1. 나는 앞선 질문에 대해 _____라고 생각한다.<br>2. 왜냐하면 교과서의 _____ 부분에서 알 수 있듯이, _____하기 때문이다.<br>3. 따라서 우리는 _____ 해야 한다.</p>
-    <div class="box" style="min-height: 150px;"></div>
-
-    <h3>{w.get('wrap_up', '[마무리] 자기 점검 및 상호작용')}</h3>
-    <div class="box">{w.get('wrap_up', '수업 후 나의 배움을 성찰하고 친구들과 공유해 봅시다.').replace(chr(10), '<br>')}</div>
+    <h3>{w.get('act1_title', '[활동 1]')}</h3><div class="box">{w.get('act1_desc', '수업 중 다룬 내용을 분석하여 정리해 봅시다.').replace(chr(10), '<br>')}</div>
+    <h3>{w.get('act2_title', '[활동 2] 생각을 여는 질문 만들기')}</h3><p>※ 친구들과 토론할 수 있는 깊이 있는 질문을 만들어 보세요.</p><div class="box"><b>▶ 나의 탐구 질문: </b></div>
+    <h3>{w.get('act3_title', '[활동 3] 나만의 관점 세우기')}</h3><p>[도움말] 1. 나는 ___라고 생각한다.<br>2. 왜냐하면 ___하기 때문이다.<br>3. 따라서 우리는 ___ 해야 한다.</p><div class="box" style="min-height: 150px;"></div>
+    <h3>{w.get('wrap_up', '[마무리] 자기 점검 및 상호작용')}</h3><div class="box">{w.get('wrap_up', '나의 배움을 성찰하고 친구들과 공유해 봅시다.').replace(chr(10), '<br>')}</div>
 </body>
 </html>"""
                 with col_b:
-                    st.download_button("📥 [학생용] 활동지 다운로드", data=html_work.encode('utf-8'), file_name=f"개념기반_활동지_{d.get('session')}차시.html", mime="text/html", type="primary", use_container_width=True)
+                    st.download_button("📥 2. 활동지 HTML", data=html_work.encode('utf-8'), file_name=f"활동지_{d.get('session')}차시.html", mime="text/html", type="primary", use_container_width=True)
+
+            # 3. 형성평가지 HTML
+            if st.session_state.quiz_detail:
+                q = st.session_state.quiz_detail
+                d = st.session_state.selected_session_detail
+                
+                # 퀴즈 HTML 조립
+                ox_html = "".join([f"<li>{item['q']} ( O , X )</li>" for item in q.get('ox_quiz', [])])
+                init_html = "".join([f"<li>{item['q']} ( 정답: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; )</li>" for item in q.get('initial_quiz', [])])
+                vocab_html = "".join([f"<li>{item['q']}<br>( 정답: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; )</li>" for item in q.get('vocab_quiz', [])])
+                
+                mcq_html = ""
+                for idx, item in enumerate(q.get('mcq', [])):
+                    opts = item.get('options', [])
+                    opt_str = "<ol>" + "".join([f"<li>{opt}</li>" for opt in opts]) + "</ol>"
+                    mcq_html += f"<li>{item['q']}{opt_str}</li>"
+                
+                # 정답 및 해설 HTML
+                ans_html = "<ul>"
+                for item in q.get('ox_quiz', []): ans_html += f"<li><b>[O/X]</b> 정답: {item['a']} - {item.get('exp','')}</li>"
+                for item in q.get('initial_quiz', []): ans_html += f"<li><b>[초성]</b> 정답: {item['a']} - {item.get('exp','')}</li>"
+                for item in q.get('vocab_quiz', []): ans_html += f"<li><b>[어휘]</b> 정답: {item['a']} - {item.get('exp','')}</li>"
+                for item in q.get('mcq', []): ans_html += f"<li><b>[객관식]</b> 정답: {item['a']} - {item.get('exp','')}</li>"
+                ans_html += "</ul>"
+
+                html_quiz = f"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>형성평가지</title>
+<style>
+    @page {{ size: A4; margin: 20mm; }}
+    body {{ font-family: 'Malgun Gothic', sans-serif; line-height: 1.6; color: #000; }}
+    .header-box {{ border: 2px solid #000; padding: 15px; margin-bottom: 20px; border-radius: 8px; text-align: center; }}
+    h1 {{ font-size: 24px; margin: 0 0 10px 0; }}
+    .info-line {{ text-align: right; font-size: 15px; font-weight: bold; color: #333; }}
+    h3 {{ font-size: 16px; margin-top: 25px; border-left: 5px solid #003366; padding-left: 10px; }}
+    ol, ul {{ margin-top: 5px; }}
+    li {{ margin-bottom: 15px; font-size: 15px; }}
+    .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #f59f00; color: white; border: none; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 5px; text-align: center; }}
+    .answer-box {{ border: 1px dashed #777; padding: 15px; margin-top: 40px; background-color: #f9f9f9; }}
+    .answer-box h4 {{ margin-top: 0; color: #e03131; }}
+    @media print {{ .print-btn {{ display: none; }} }}
+</style>
+</head>
+<body>
+    <button class="print-btn" onclick="window.print()">🖨️ 형성평가지 인쇄하기</button>
+    <div class="header-box">
+        <h1>[형성평가] {q.get('title', '단원 점검 퀴즈')}</h1>
+        <div class="info-line">[{t_stud}] ___번 이름: _____________</div>
+    </div>
+    
+    <h3>🎯 O/X 퀴즈</h3>
+    <ul>{ox_html}</ul>
+    
+    <h3>🎯 초성 퀴즈</h3>
+    <ul>{init_html}</ul>
+    
+    <h3>🎯 어휘 퀴즈</h3>
+    <ul>{vocab_html}</ul>
+    
+    <h3>🎯 객관식 퀴즈 (4지선다)</h3>
+    <ol>{mcq_html}</ol>
+    
+    <div class="answer-box">
+        <h4>[교사용] 정답 및 해설 (인쇄 전 절취선)</h4>
+        {ans_html}
+    </div>
+</body>
+</html>"""
+                with col_c:
+                    st.download_button("📥 3. 형성평가 HTML", data=html_quiz.encode('utf-8'), file_name=f"형성평가_{d.get('session')}차시.html", mime="text/html", type="primary", use_container_width=True)
 
     # --- 3. 학생 세특 초안 ---
     elif st.session_state.current_page == "세특 초안":
