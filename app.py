@@ -48,10 +48,8 @@ if "final_subject" not in st.session_state: st.session_state.final_subject = "�
 # 🌟 서명용 캔버스 초기화 키
 if "canvas_key" not in st.session_state: st.session_state.canvas_key = 0
 
-if "training_list" not in st.session_state: 
-    st.session_state.training_list = ["2026학년도 새학년 집중준비기간 연수", "전남글빛국어교육연구회 공개수업"]
 if "registry_df" not in st.session_state: 
-    st.session_state.registry_df = pd.DataFrame(columns=["연번", "연수명", "소속", "직위", "이름", "서명 상태", "서명 이미지", "등록 일시"])
+    st.session_state.registry_df = pd.DataFrame(columns=["연번", "연수명", "일시", "장소", "소속", "직위", "이름", "서명 상태", "서명 이미지", "등록 일시"])
 
 # 상단 헤더
 st.title("🚀 AI 에듀테크 수퍼 앱 (feat. 개념기반 교육과정)")
@@ -323,24 +321,40 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (문제의 근본 해결: return_image_data=True 추가)
+    # 🌟 [메뉴 5] 등록부 (연수명+일시+장소 세트 관리 및 HTML 인쇄 개선)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
         
-        with st.expander("⚙️ 연수명/일시/장소 관리 (비밀번호: 1234)"):
+        # 🌟 데이터 구조 변경: 연수명, 일시, 장소를 딕셔너리로 세트 관리
+        if "training_data" not in st.session_state:
+            st.session_state.training_data = {
+                "2026학년도 새학년 집중준비기간 연수": {"date": "2026. 02. 11. 14:00", "loc": "본관 대강당"},
+                "전남글빛국어교육연구회 공개수업": {"date": "2026. 10. 14. 14:00", "loc": "1학년 6반 교실"}
+            }
+
+        with st.expander("⚙️ 연수 관리자 설정 (비밀번호: 1234)"):
             if st.text_input("비밀번호", type="password", key="reg_pw") == "1234":
-                new_training = st.text_input("새로운 연수명 입력")
-                if st.button("➕ 연수명 추가"):
-                    st.session_state.training_list.append(new_training)
-                    st.rerun()
+                st.markdown("**새로운 연수 개설**")
+                c_new1, c_new2, c_new3 = st.columns([2, 1, 1])
+                with c_new1: new_title = st.text_input("연수명")
+                with c_new2: new_date = st.text_input("일시", placeholder="예) 10. 20. 15:00")
+                with c_new3: new_loc = st.text_input("장소", placeholder="예) 시청각실")
+                if st.button("➕ 연수 추가하기"):
+                    if new_title:
+                        st.session_state.training_data[new_title] = {"date": new_date, "loc": new_loc}
+                        st.success(f"'{new_title}' 추가 완료!")
+                        time.sleep(0.5)
+                        st.rerun()
         
         st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
-        selected_training = st.selectbox("📌 연수명 선택", st.session_state.training_list)
+        # 🌟 등록 화면: 선택 시 일시와 장소가 자동으로 따라옴
+        selected_training = st.selectbox("📌 참여할 연수 선택", list(st.session_state.training_data.keys()))
         
-        c_date, c_loc = st.columns(2)
-        with c_date: reg_date = st.text_input("📅 연수 일시", placeholder="예) 2026. 10. 14. 14:00")
-        with c_loc: reg_loc = st.text_input("🏫 연수 장소", placeholder="예) 대강당")
+        reg_date = st.session_state.training_data[selected_training]["date"]
+        reg_loc = st.session_state.training_data[selected_training]["loc"]
+        
+        st.info(f"📅 **일시:** {reg_date if reg_date else '미지정'} &nbsp;&nbsp;|&nbsp;&nbsp; 🏫 **장소:** {reg_loc if reg_loc else '미지정'}")
         st.write("---")
         
         c1, c2, c3 = st.columns(3)
@@ -350,7 +364,6 @@ with col_main:
         
         st.write("✍️ **서명** - 마우스나 스마트폰 터치로 서명해 주세요.")
         
-        # 🌟 가장 중요한 한 줄: return_image_data=True 가 들어가야 파이썬으로 그림을 줍니다!!
         canvas_result = st_canvas(
             stroke_width=3, 
             stroke_color="#000000", 
@@ -385,6 +398,8 @@ with col_main:
                     new_row = pd.DataFrame([{
                         "연번": len(st.session_state.registry_df)+1, 
                         "연수명": selected_training, 
+                        "일시": reg_date,
+                        "장소": reg_loc,
                         "소속": in_dept, 
                         "직위": in_pos, 
                         "이름": in_name, 
@@ -395,7 +410,6 @@ with col_main:
                     st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
                     st.success(f"{in_name} 선생님의 손글씨 서명이 완벽하게 등록되었습니다!")
                     
-                    # 캔버스 리셋
                     st.session_state.canvas_key += 1
                     time.sleep(0.5)
                     st.rerun()
@@ -404,17 +418,18 @@ with col_main:
                     
         st.markdown("</div>", unsafe_allow_html=True)
         
-        display_df = st.session_state.registry_df.drop(columns=["서명 이미지"], errors="ignore")
-        st.dataframe(display_df, hide_index=True, use_container_width=True)
+        # 화면 출력용 데이터 프레임 (이미지는 숨김)
+        display_df = st.session_state.registry_df[st.session_state.registry_df["연수명"] == selected_training]
+        st.dataframe(display_df.drop(columns=["서명 이미지", "연수명", "일시", "장소"], errors="ignore"), hide_index=True, use_container_width=True)
         
-        if not st.session_state.registry_df.empty:
+        if not display_df.empty:
             col_d1, col_d2 = st.columns(2)
             with col_d1:
-                st.download_button("📥 엑셀(CSV) 다운로드", data=display_df.to_csv(index=False, encoding='utf-8-sig'), file_name="등록부.csv", mime="text/csv", use_container_width=True)
+                st.download_button("📥 엑셀(CSV) 다운로드", data=display_df.to_csv(index=False, encoding='utf-8-sig'), file_name=f"{selected_training}_등록부.csv", mime="text/csv", use_container_width=True)
             
             with col_d2:
                 rows_html = ""
-                for idx, row in st.session_state.registry_df.iterrows():
+                for idx, row in display_df.iterrows():
                     img_tag = f'<img src="data:image/png;base64,{row["서명 이미지"]}" style="height: 40px; max-width: 140px; object-fit: contain;"/>' if row.get("서명 이미지") else ""
                     rows_html += f"<tr><td>{row['연번']}</td><td>{row['소속']}</td><td>{row['직위']}</td><td>{row['이름']}</td><td>{img_tag}</td></tr>"
 
@@ -455,7 +470,7 @@ with col_main:
     </table>
 </body>
 </html>"""
-                st.download_button("🖨️ 등록부 인쇄 (손글씨 포함 HTML)", data=html_registry.encode('utf-8'), file_name=f"등록부_{selected_training}.html", mime="text/html", type="primary", use_container_width=True)
+                st.download_button("🖨️ 등록부 인쇄 (손글씨 포함 HTML)", data=html_registry.encode('utf-8'), file_name=f"{selected_training}_등록부.html", mime="text/html", type="primary", use_container_width=True)
 
 # ==========================================
 # [오른쪽 20%] 🌟 API 키 및 유용한 정보
