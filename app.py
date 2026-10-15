@@ -222,20 +222,17 @@ with col_main:
             teacher_display = f"[{s_name}] {st.session_state.get('teacher_name', '')}".strip() if s_name else st.session_state.get('teacher_name', '')
             info_line = f"[{st.session_state.get('target_students', '')}] ___번 이름: _____________"
             
-            # 과정안 HTML
             if st.session_state.selected_session_detail:
                 d = st.session_state.selected_session_detail
                 html_plan = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>공개수업 지도안</title><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; line-height: 1.5; }} table {{ width: 100%; border-collapse: collapse; margin-bottom: 25px; }} th, td {{ border: 1px solid #000; padding: 8px; }} th {{ background-color: #f2f2f2; text-align: center; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #1a73e8; color: white; text-align: center; cursor: pointer; border-radius: 5px; border:none; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 지도안 인쇄하기</button><h1 style="text-align:center;">{sub}과 교수·학습 과정안</h1><table><tr><th>일 시</th><td>{st.session_state.get('class_date','')}</td><th>장 소</th><td>{st.session_state.get('class_location','')}</td></tr><tr><th>대 상</th><td>{st.session_state.get('target_students','')}</td><th>지도 교사</th><td>{teacher_display}</td></tr></table><h3>| 1. 수업 개요 및 의도</h3><p>{d.get('overview','')}</p><h3>| 2. CBI 목표</h3><ul><li><b>거시/미시:</b> {d.get('macro','')} / {d.get('micro','')}</li><li><b>목표:</b> {d.get('objective','')}</li><li><b>일반화:</b> {d.get('big_idea','')}</li></ul><h3>| 3. 전개</h3><table><tr><th width="10%">단계</th><th width="10%">시량</th><th width="60%">교수·학습 활동</th><th width="20%">유의점</th></tr><tr><td align="center">도 입</td><td align="center">{d.get('intro_time','')}</td><td>{d.get('intro_act','').replace(chr(10), '<br>')}</td><td>{d.get('intro_note','').replace(chr(10), '<br>')}</td></tr><tr><td align="center">전 개</td><td align="center">{d.get('dev_time','')}</td><td>{d.get('dev_act','').replace(chr(10), '<br>')}</td><td>{d.get('dev_note','').replace(chr(10), '<br>')}</td></tr><tr><td align="center">정 리</td><td align="center">{d.get('conc_time','')}</td><td>{d.get('conc_act','').replace(chr(10), '<br>')}</td><td>{d.get('conc_note','').replace(chr(10), '<br>')}</td></tr></table></body></html>"""
                 with c_a: st.download_button("📥 1. 지도안", data=html_plan.encode('utf-8'), file_name="지도안.html", mime="text/html", type="primary", use_container_width=True)
 
-            # 활동지 HTML
             if st.session_state.worksheet_detail:
                 w = st.session_state.worksheet_detail
                 d = st.session_state.selected_session_detail
                 html_work = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; }} .box {{ border: 1px dashed #333; padding: 15px; margin-bottom: 10px; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #2b8a3e; color: white; cursor: pointer; border-radius: 5px; text-align:center; border:none; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 활동지 인쇄하기</button><div style="border: 2px solid #000; padding: 15px; border-radius: 8px;"><h1 style="text-align:center; margin:0;">[탐구 활동지] {w.get('title','')}</h1><div style="text-align:right; font-weight:bold; margin-top:10px;">{info_line}</div><div><b>[거시/미시]</b> {d.get('macro','')} / {d.get('micro','')}</div><div><b>[목표]</b> {d.get('objective','')}</div><div><b>[핵심 아이디어]</b> {d.get('big_idea','')}</div></div><h3>{w.get('act1_title','')}</h3><div class="box">{w.get('act1_desc','').replace(chr(10), '<br>')}</div><h3>{w.get('act2_title','')}</h3><div class="box"><b>▶ 나의 질문: </b></div><h3>{w.get('act3_title','')}</h3><div class="box" style="min-height:100px;"></div><h3>{w.get('wrap_up','[마무리]')}</h3></body></html>"""
                 with c_b: st.download_button("📥 2. 활동지", data=html_work.encode('utf-8'), file_name="활동지.html", mime="text/html", type="primary", use_container_width=True)
 
-            # 형성평가 HTML & CSV
             if st.session_state.quiz_detail:
                 q = st.session_state.quiz_detail
                 ox_html = "".join([f"<li>{item['q']} ( O , X )</li>" for item in q.get('ox_quiz', [])])
@@ -330,7 +327,7 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (실시간 금고 백업 및 무조건 추출 로직 완벽 적용)
+    # 🌟 [메뉴 5] 등록부 (접근 에러 완벽 차단 & 실시간 금고 백업 적용)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
@@ -357,7 +354,6 @@ with col_main:
         
         st.write("✍️ **서명** - 마우스나 스마트폰 터치로 서명해 주세요.")
         
-        # 🌟 1단계: 캔버스 생성 (update_streamlit=True 덕분에 그릴 때마다 파이썬으로 데이터가 즉시 넘어옵니다)
         canvas_result = st_canvas(
             stroke_width=3, 
             stroke_color="#000000", 
@@ -365,27 +361,30 @@ with col_main:
             height=100, 
             width=400, 
             drawing_mode="freedraw", 
-            update_streamlit=True,
+            update_streamlit=True, 
             key=f"sig_canvas_{st.session_state.canvas_key}"
         )
         
-        # 🌟 2단계: 그리는 즉시 '안전 금고(safe_signature)'에 무조건 복사해둡니다.
-        if canvas_result is not None and canvas_result.image_data is not None:
-            st.session_state.safe_signature = canvas_result.image_data.copy()
+        # 🌟 에러 차단막(try-except) 속에서 그리는 즉시 금고(safe_signature)에 저장해 둡니다.
+        try:
+            if canvas_result is not None:
+                img_data = canvas_result.image_data
+                if img_data is not None:
+                    st.session_state.safe_signature = img_data.copy()
+        except Exception:
+            pass
 
-        # 🌟 3단계: 제출 버튼 클릭 시 금고에 있는 사진을 무조건 빼와서 찍습니다!
         if st.button("✅ 서명 완료 및 제출", type="primary", use_container_width=True):
             if not in_name:
                 st.warning("이름을 입력하세요.")
             else:
                 sig_base64 = ""
                 
-                # 버튼 누를 때 캔버스가 초기화되더라도, 우리는 금고에서 이미지를 안전하게 꺼내옵니다.
+                # 🌟 제출 버튼을 누를 때 캔버스가 초기화되더라도, 금고에 백업된 이미지를 무조건 빼서 사용합니다.
                 img_array = st.session_state.get('safe_signature')
                 
                 if img_array is not None:
                     try:
-                        # 이미지를 PIL 형식으로 변환하고 흰색 바탕을 명확히 깝니다.
                         img_pil = Image.fromarray(img_array.astype('uint8'), 'RGBA')
                         img_rgb = Image.new("RGB", img_pil.size, (255, 255, 255))
                         img_rgb.paste(img_pil, mask=img_pil.split()[3])
@@ -396,7 +395,6 @@ with col_main:
                     except Exception:
                         pass
                 
-                # 데이터 프레임에 무조건 저장!
                 new_row = pd.DataFrame([{
                     "연번": len(st.session_state.registry_df)+1, 
                     "연수명": selected_training, 
@@ -410,10 +408,10 @@ with col_main:
                 st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
                 st.success(f"{in_name} 선생님의 서명이 성공적으로 등록되었습니다!")
                 
-                # 🌟 다음 사람을 위해 금고와 캔버스 완벽하게 리셋!
+                # 다음 사람을 위해 금고를 비우고 캔버스를 리셋
                 st.session_state.safe_signature = None
                 st.session_state.canvas_key += 1
-                time.sleep(0.3)
+                time.sleep(0.5)
                 st.rerun()
                     
         st.markdown("</div>", unsafe_allow_html=True)
@@ -475,7 +473,7 @@ with col_main:
 # [오른쪽 20%] 🌟 API 키 및 유용한 정보 
 # ==========================================
 with col_info:
-    # 🌟 API 키 입력란 (대문짝만한 공간 최상단 배치 완벽 유지)
+    # 🌟 API 키 입력란 (대문짝만한 공간 최상단 배치)
     st.markdown("<div style='background-color:#e3f2fd; padding: 15px; border-radius: 10px; border: 2px solid #2196f3; margin-bottom: 20px;'>", unsafe_allow_html=True)
     st.markdown("<h4 style='margin-top:0; color:#0d47a1; text-align:center;'>🔑 API 키 입력 (필수)</h4>", unsafe_allow_html=True)
     st.session_state.api_key = st.text_input("Gemini API 키", type="password", placeholder="여기에 키를 붙여넣으세요", label_visibility="collapsed")
