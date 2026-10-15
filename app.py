@@ -77,6 +77,15 @@ def call_gemini_robust(api_key, prompt, max_retries=3):
 col_menu, col_main, col_info = st.columns([2, 6, 2], gap="large")
 
 with col_menu:
+    # 🌟 [개선] API 키 입력란을 가장 위로 이동
+    st.markdown("##### 🔑 필수 API 설정")
+    st.session_state.api_key = st.text_input("Gemini API 키 입력", type="password", placeholder="여기에 키를 붙여넣으세요")
+    if not st.session_state.api_key: 
+        st.error("👈 AI 작동을 위해 키를 넣어주세요.")
+    else: 
+        st.success("🟢 AI 연동 준비 완료!")
+    st.write("---")
+
     st.subheader("📌 업무 메뉴")
     def nav_button(label, page_name):
         if st.button(label, type="primary" if st.session_state.current_page == page_name else "secondary", use_container_width=True):
@@ -96,12 +105,6 @@ with col_menu:
     nav_button("🎉 행사 기획 마스터", "행사 기획")
     nav_button("💌 학급 알림장/문자", "알림장")
     nav_button("📋 온라인 등록부", "등록부")
-
-    st.write("---")
-    st.markdown("##### 🔑 필수 API 설정")
-    st.session_state.api_key = st.text_input("Gemini API 키 입력", type="password", placeholder="여기에 키를 붙여넣으세요")
-    if not st.session_state.api_key: st.error("👈 AI 작동을 위해 키를 넣어주세요.")
-    else: st.success("🟢 AI 연동 준비 완료!")
 
 with col_main:
     # --------------------------------------------------------------------------------
@@ -149,7 +152,7 @@ with col_main:
                             st.session_state.proposed_sessions = json.loads(res1.replace("```json", "").replace("```", "").strip())
                             st.success("단원 분석 완료! 3단계 탭으로 이동하세요.")
                         except Exception as e: st.error(str(e))
-            elif not st.session_state.api_key: st.error("👈 좌측 메뉴 하단에 API 키를 먼저 입력해 주세요.")
+            elif not st.session_state.api_key: st.error("👈 좌측 상단에 API 키를 먼저 입력해 주세요.")
             else: st.warning("1단계 탭에서 교과서 PDF를 업로드해 주세요.")
                 
         with tab3:
@@ -269,7 +272,7 @@ with col_main:
                 with c_d: st.download_button("📥 4. 퀴즈앤(CSV)", data=df_quiz.to_csv(index=False, encoding='utf-8-sig'), file_name="퀴즈앤_일괄등록.csv", mime="text/csv", type="secondary", use_container_width=True)
 
     # --------------------------------------------------------------------------------
-    # [메뉴 2, 3, 4] 행사, 사안, 세특, 알림장 (동일하게 유지)
+    # [메뉴 2, 3, 4] 행사, 사안, 세특, 알림장
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "행사 기획":
         st.subheader("🎉 대형 행사 시나리오 & 기안문 자동 생성기")
@@ -278,7 +281,7 @@ with col_main:
         with col2: event_date = st.text_input("행사 일시 및 장소", placeholder="예) 6월 10일 (수), 대강당")
         event_purpose = st.text_area("행사 목적 및 주요 식순(키워드)", placeholder="예) 개회식, 교장선생님 인사말, 학생 서포터즈 발대식, 부스 투어")
         if st.button("🎉 공식 기안문 & 대본 생성하기", type="primary"):
-            if not st.session_state.api_key: st.error("👈 좌측 메뉴 하단에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.api_key: st.error("👈 좌측 상단에 API 키를 먼저 입력해 주세요.")
             elif event_name and event_purpose:
                 with st.spinner("AI가 교무 행정 양식에 맞춰 완벽한 문서를 기안하고 있습니다..."):
                     prompt = f"당신은 고등학교 부장교사입니다. 행사명: {event_name}, 일시/장소: {event_date}, 주요내용: {event_purpose}. \n두 가지를 작성하세요.\n1. 내부 결재용 기안문 초안 (목적, 방침, 세부 일정 포함)\n2. 행사 당일 사회자(진행자)의 매끄러운 오프닝 및 진행 시나리오 대본"
@@ -293,7 +296,7 @@ with col_main:
         st.subheader("🛡️ 교권 보호 사안 보고서 & 상담 매뉴얼 생성기")
         incident_memo = st.text_area("발생한 사안이나 민원 내용을 자유롭게 적어주세요.", placeholder="예) 수업 중에 A학생이 엎드려 자길래 깨웠더니 소리를 지르고 욕설을 함.", height=150)
         if st.button("🛡️ 객관적 보고서 및 대응 스크립트 생성", type="primary"):
-            if not st.session_state.api_key: st.error("👈 좌측 메뉴 하단에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.api_key: st.error("👈 좌측 상단에 API 키를 먼저 입력해 주세요.")
             elif incident_memo:
                 with st.spinner("AI가 감정을 배제하고 공식 보고서와 정중한 대응 매뉴얼을 작성 중입니다..."):
                     prompt = f"당신은 학교 폭력 및 교권 침해 대응 전문가입니다. 다음 교사의 메모를 바탕으로 두 가지를 작성하세요: {incident_memo}\n1. 육하원칙에 입각한 객관적이고 건조한 공식 사안 보고서 초안\n2. 학부모 상담 시 감정적 충돌을 피하면서 단호하고 정중하게 대응할 수 있는 교사용 전화/면담 스크립트"
@@ -311,7 +314,7 @@ with col_main:
         with col2: stu_level = st.selectbox("성취 수준", ["상 (우수함, 주도적)", "중 (성실함, 무난함)", "하 (노력 요함)"])
         stu_activity = st.text_area("주요 관찰 내용 및 활동 키워드", placeholder="예) 인공지능 윤리를 주제로 한 찬반 토론에서 사회자 역할을 맡아 갈등을 조율함.")
         if st.button("✨ 세특 초안 생성하기", type="primary"):
-            if not st.session_state.api_key: st.error("👈 좌측 메뉴 하단에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.api_key: st.error("👈 좌측 상단에 API 키를 먼저 입력해 주세요.")
             elif stu_name and stu_activity:
                 with st.spinner("NEIS 양식에 맞게 문장을 작성 중입니다..."):
                     prompt = f"당신은 고등학교 교사입니다. 학생 '{stu_name}'의 세특을 작성합니다. 수준: {stu_level} / 관찰: {stu_activity}. 명사형 종결어미(~함, ~임)를 사용하고, 500자 내외로 전문적이고 긍정적으로 작성하세요."
@@ -323,7 +326,7 @@ with col_main:
         st.subheader("💌 학급 알림장/가정통신문 자동 생성기")
         msg_context = st.text_area("전달할 핵심 내용 입력", placeholder="예) 내일 체험학습 감. 도시락 꼭 싸오고 8시 반까지 운동장 집합.")
         if st.button("💌 알림장 문구 생성", type="primary"):
-            if not st.session_state.api_key: st.error("👈 좌측 메뉴 하단에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.api_key: st.error("👈 좌측 상단에 API 키를 먼저 입력해 주세요.")
             elif msg_context:
                 with st.spinner("정중한 문구로 변환 중입니다..."):
                     prompt = f"다정하고 꼼꼼한 고등학교 담임교사입니다. 학부모님과 학생 단체 문자로 보낼 수 있게 알림장 형태로 다듬어주세요. 내용: {msg_context}."
@@ -332,7 +335,7 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (접근 에러 원천 차단 및 빈 캔버스 방지 로직 적용)
+    # 🌟 [메뉴 5] 등록부 (완벽한 서명 인식 로직 적용)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
@@ -359,7 +362,7 @@ with col_main:
         
         st.write("✍️ **서명 (필수)** - 마우스나 스마트폰 터치로 직접 서명해 주세요.")
         
-        # 🌟 손글씨 캔버스 복구
+        # 🌟 캔버스 컴포넌트 
         canvas_result = st_canvas(
             stroke_width=3, 
             stroke_color="#000000", 
@@ -371,8 +374,6 @@ with col_main:
             key="sig_canvas"
         )
         
-        st.caption("💡 캔버스에 서명을 다 그리신 후 **1초 정도 기다렸다가** 제출 버튼을 누르시면 아주 잘 저장됩니다.")
-        
         if st.button("✅ 서명 완료 및 제출", type="primary", use_container_width=True):
             if not in_name:
                 st.warning("이름을 입력하세요.")
@@ -380,27 +381,21 @@ with col_main:
                 is_valid_sig = False
                 sig_base64 = ""
                 
-                # 🌟 에러 원천 차단: image_data 접근 자체를 try-except로 감싸서 안전하게 확인합니다.
-                try:
-                    if canvas_result is not None:
-                        # 접근 시 에러가 나면 except로 바로 빠집니다.
-                        img_array = canvas_result.image_data.astype('uint8')
-                        
-                        # 투명도(알파) 채널에 픽셀이 있는지 확인하여 빈 캔버스 방지
-                        if np.sum(img_array[:, :, 3]) > 0: 
-                            is_valid_sig = True
+                # 🌟 에러 원천 차단: 캔버스 데이터에 그려진 선(objects)이 존재하는지 확인하는 가장 확실한 방법 사용
+                if canvas_result is not None and canvas_result.json_data is not None:
+                    if len(canvas_result.json_data.get("objects", [])) > 0:
+                        is_valid_sig = True
+                        if canvas_result.image_data is not None:
+                            img_array = canvas_result.image_data.astype('uint8')
                             img_rgba = Image.fromarray(img_array, 'RGBA')
                             img_rgb = Image.new("RGB", img_rgba.size, (255, 255, 255))
                             img_rgb.paste(img_rgba, mask=img_rgba.split()[3])
-                            
                             buffered = io.BytesIO()
                             img_rgb.save(buffered, format="PNG")
                             sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                except Exception:
-                    pass
                 
                 if not is_valid_sig:
-                    st.warning("⚠️ 서명이 인식되지 않았거나 전송 중입니다. 서명을 캔버스에 그린 후 1초 뒤에 다시 눌러주세요!")
+                    st.warning("⚠️ 서명이 인식되지 않았습니다. 캔버스에 마우스(터치)로 서명을 그려주세요!")
                 else:
                     new_row = pd.DataFrame([{
                         "연번": len(st.session_state.registry_df)+1, 
