@@ -55,7 +55,7 @@ st.title("🚀 AI 에듀테크 수퍼 앱 (feat. 개념기반 교육과정)")
 st.write("---")
 
 # ==========================================
-# 🌟 [AI 호출 함수]
+# 🌟 [AI 호출 함수] 
 # ==========================================
 def call_gemini_robust(api_key, prompt, max_retries=3):
     client = genai.Client(api_key=api_key)
@@ -100,11 +100,8 @@ with col_menu:
     st.write("---")
     st.markdown("##### 🔑 필수 API 설정")
     st.session_state.api_key = st.text_input("Gemini API 키 입력", type="password", placeholder="여기에 키를 붙여넣으세요")
-    
-    if not st.session_state.api_key:
-        st.error("👈 AI 작동을 위해 키를 넣어주세요.")
-    else:
-        st.success("🟢 AI 연동 준비 완료!")
+    if not st.session_state.api_key: st.error("👈 AI 작동을 위해 키를 넣어주세요.")
+    else: st.success("🟢 AI 연동 준비 완료!")
 
 with col_main:
     # --------------------------------------------------------------------------------
@@ -123,19 +120,14 @@ with col_main:
             with c1:
                 subj_list = ["공통국어", "윤리와 사상", "생활과 윤리", "➕ 직접 입력 (새 과목 추가)"]
                 sel_subj = st.selectbox("📚 담당 과목", subj_list)
-                if sel_subj == "➕ 직접 입력 (새 과목 추가)":
-                    st.session_state.final_subject = st.text_input("✨ 새 과목명 입력", placeholder="예) 통합사회")
-                else:
-                    st.session_state.final_subject = sel_subj
-                
+                if sel_subj == "➕ 직접 입력 (새 과목 추가)": st.session_state.final_subject = st.text_input("✨ 새 과목명 입력")
+                else: st.session_state.final_subject = sel_subj
                 st.text_input("🏫 소속 학교명", placeholder="예) 광영고등학교", key="school_name")
                 st.text_input("📅 수업 일시", placeholder="예) 2026. 10. 14. (수) 14:00", key="class_date")
-                
             with c2:
                 st.text_input("👨‍🏫 지도 교사", placeholder="예) 유일한", key="teacher_name")
                 st.text_input("👥 수업 대상", placeholder="예) 1학년 6반 학생", key="target_students")
                 st.text_input("🏫 수업 장소", placeholder="예) 1학년 6반 교실", key="class_location")
-                
             st.write("---")
             st.markdown("#### 📄 교과서 PDF 업로드")
             uploaded_file = st.file_uploader("단원 분석을 위한 PDF 파일을 업로드해 주세요.", type=["pdf"])
@@ -156,12 +148,9 @@ with col_main:
                             res1 = call_gemini_robust(st.session_state.api_key, prompt1)
                             st.session_state.proposed_sessions = json.loads(res1.replace("```json", "").replace("```", "").strip())
                             st.success("단원 분석 완료! 3단계 탭으로 이동하세요.")
-                        except Exception as e:
-                            st.error(str(e))
-            elif not st.session_state.api_key:
-                st.error("👈 좌측 메뉴 하단에 API 키를 먼저 입력해 주세요.")
-            else:
-                st.warning("1단계 탭에서 교과서 PDF를 업로드해 주세요.")
+                        except Exception as e: st.error(str(e))
+            elif not st.session_state.api_key: st.error("👈 좌측 메뉴 하단에 API 키를 먼저 입력해 주세요.")
+            else: st.warning("1단계 탭에서 교과서 PDF를 업로드해 주세요.")
                 
         with tab3:
             st.markdown("#### 🎯 개념기반 공개수업 지도안 생성")
@@ -185,8 +174,7 @@ with col_main:
                             st.session_state.selected_session_detail = json.loads(res2.replace("```json", "").replace("```", "").strip())
                             st.session_state.selected_session_detail.update({'session': chosen['session'], 'title': chosen['title']})
                             st.success("개념기반 지도안 완성! 4단계 탭으로 이동하세요.")
-                        except Exception as e:
-                            st.error(str(e))
+                        except Exception as e: st.error(str(e))
 
         with tab4:
             st.markdown("#### 📝 A4 맞춤형 학생 활동지 생성")
@@ -205,8 +193,7 @@ with col_main:
                             res3 = call_gemini_robust(st.session_state.api_key, prompt3)
                             st.session_state.worksheet_detail = json.loads(res3.replace("```json", "").replace("```", "").strip())
                             st.success("활동지 완성! 5단계 탭으로 이동하세요.")
-                        except Exception as e:
-                            st.error(str(e))
+                        except Exception as e: st.error(str(e))
 
         with tab5:
             st.markdown("#### ❓ 다유형 형성평가지 출제")
@@ -227,8 +214,7 @@ with col_main:
                             res4 = call_gemini_robust(st.session_state.api_key, prompt4)
                             st.session_state.quiz_detail = json.loads(res4.replace("```json", "").replace("```", "").strip())
                             st.success("형성평가 출제 완료! 6단계(인쇄/추출) 탭으로 이동하세요.")
-                        except Exception as e:
-                            st.error(str(e))
+                        except Exception as e: st.error(str(e))
 
         with tab6:
             st.markdown("#### 🖨️ 생성 파일 인쇄 및 엑셀 추출")
@@ -289,7 +275,6 @@ with col_main:
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "행사 기획":
         st.subheader("🎉 대형 행사 시나리오 & 기안문 자동 생성기")
-        
         col1, col2 = st.columns(2)
         with col1: event_name = st.text_input("행사명", placeholder="예) 2026학년도 교실로 찾아가는 교육과정 박람회")
         with col2: event_date = st.text_input("행사 일시 및 장소", placeholder="예) 6월 10일 (수), 대강당")
@@ -312,9 +297,7 @@ with col_main:
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "사안 보고":
         st.subheader("🛡️ 교권 보호 사안 보고서 & 상담 매뉴얼 생성기")
-        
         incident_memo = st.text_area("발생한 사안이나 민원 내용을 자유롭게 적어주세요.", placeholder="예) 수업 중에 A학생이 엎드려 자길래 깨웠더니 소리를 지르고 욕설을 함.", height=150)
-        
         if st.button("🛡️ 객관적 보고서 및 대응 스크립트 생성", type="primary"):
             if not st.session_state.api_key: st.error("👈 좌측 메뉴 하단에 API 키를 먼저 입력해 주세요.")
             elif incident_memo:
@@ -358,7 +341,7 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (서명 에러 방어 로직 추가)
+    # 🌟 [메뉴 5] 등록부 (서명 동기화 및 렌더링 로직 대폭 강화)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
@@ -383,22 +366,35 @@ with col_main:
         with c2: in_pos = st.text_input("직위", placeholder="예) 교사")
         with c3: in_name = st.text_input("이름", placeholder="예) 홍길동")
         
-        st.write("✍️ **서명** (아래 캔버스에 마우스나 터치로 서명하세요)")
-        canvas_result = st_canvas(stroke_width=2, stroke_color="#000", background_color="#ffffff", height=100, width=400, drawing_mode="freedraw", key="sig")
+        st.write("✍️ **서명** (마우스나 터치로 서명 후, 캔버스 바깥 빈 공간을 살짝 클릭해 주세요!)")
+        canvas_result = st_canvas(
+            stroke_width=2, 
+            stroke_color="#000000", 
+            background_color="#ffffff", 
+            height=100, 
+            width=400, 
+            drawing_mode="freedraw", 
+            update_streamlit=True,
+            key="sig"
+        )
         
         if st.button("✅ 서명 완료 및 제출", type="primary", use_container_width=True):
             if in_name:
                 sig_base64 = ""
-                # 🌟 에러 방지: 서명 데이터가 준비되지 않았을 경우 무시하고 넘어가도록 예외 처리
                 try:
                     if canvas_result is not None and getattr(canvas_result, 'image_data', None) is not None:
                         img_array = canvas_result.image_data.astype('uint8')
-                        img = Image.fromarray(img_array, 'RGBA')
+                        
+                        # 투명도(Alpha)를 없애고 순백색 배경을 덧대어 확실한 이미지로 변환 (블랙아웃 현상 방지)
+                        img_rgba = Image.fromarray(img_array, 'RGBA')
+                        img_rgb = Image.new("RGB", img_rgba.size, (255, 255, 255))
+                        img_rgb.paste(img_rgba, mask=img_rgba.split()[3])
+                        
                         buffered = io.BytesIO()
-                        img.save(buffered, format="PNG")
+                        img_rgb.save(buffered, format="PNG")
                         sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
                 except Exception:
-                    pass # 캔버스 동기화 전인 경우 빈 서명으로 처리
+                    pass
                 
                 new_row = pd.DataFrame([{
                     "연번": len(st.session_state.registry_df)+1, 
@@ -411,7 +407,7 @@ with col_main:
                     "등록 일시": datetime.now().strftime("%m-%d %H:%M")
                 }])
                 st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
-                st.success(f"{in_name}님 등록 완료! (서명이 저장되었습니다)")
+                st.success(f"{in_name}님 등록 완료! (서명이 안전하게 저장되었습니다)")
             else:
                 st.warning("이름을 입력하세요.")
         st.markdown("</div>", unsafe_allow_html=True)
@@ -427,7 +423,8 @@ with col_main:
             with col_d2:
                 rows_html = ""
                 for idx, row in st.session_state.registry_df.iterrows():
-                    img_tag = f'<img src="data:image/png;base64,{row["서명 이미지"]}" style="max-height: 40px;"/>' if row.get("서명 이미지") else ""
+                    # 🌟 이미지 태그 CSS 강화 (표 안에서 찌그러지거나 사라지지 않도록 방어)
+                    img_tag = f'<img src="data:image/png;base64,{row["서명 이미지"]}" style="height: 40px; max-width: 150px; object-fit: contain; display: block; margin: 0 auto;"/>' if row.get("서명 이미지") else ""
                     rows_html += f"<tr><td>{row['연번']}</td><td>{row['소속']}</td><td>{row['직위']}</td><td>{row['이름']}</td><td>{img_tag}</td></tr>"
 
                 html_registry = f"""<!DOCTYPE html>
@@ -441,9 +438,9 @@ with col_main:
     h1 {{ text-align: center; font-size: 26px; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 20px; letter-spacing: 2px; }}
     .info-table {{ width: 100%; border: none; margin-bottom: 15px; font-size: 15px; font-weight: bold; }}
     .info-table td {{ padding: 5px; border: none; }}
-    .reg-table {{ width: 100%; border-collapse: collapse; font-size: 14px; text-align: center; }}
+    .reg-table {{ width: 100%; border-collapse: collapse; font-size: 14px; text-align: center; table-layout: fixed; }}
     .reg-table th, .reg-table td {{ border: 1px solid #000; padding: 10px; vertical-align: middle; height: 45px; }}
-    .reg-table th {{ background-color: #f2f2f2; }}
+    .reg-table th {{ background-color: #f2f2f2; font-weight: bold; }}
     .col-no {{ width: 8%; }}
     .col-dept {{ width: 25%; }}
     .col-pos {{ width: 15%; }}
