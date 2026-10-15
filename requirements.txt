@@ -3,4 +3,4 @@ pdfplumber
 pandas
 python-docx
 streamlit-drawable-canvas
-requests
+google-genai
