@@ -77,7 +77,7 @@ def call_gemini_robust(api_key, prompt, max_retries=3):
 col_menu, col_main, col_info = st.columns([2, 6, 2], gap="large")
 
 with col_menu:
-    # 🌟 [개선] API 키 입력란을 가장 위로 이동
+    # 🌟 API 키 입력을 좌측 상단으로 최우선 배치
     st.markdown("##### 🔑 필수 API 설정")
     st.session_state.api_key = st.text_input("Gemini API 키 입력", type="password", placeholder="여기에 키를 붙여넣으세요")
     if not st.session_state.api_key: 
@@ -152,7 +152,7 @@ with col_main:
                             st.session_state.proposed_sessions = json.loads(res1.replace("```json", "").replace("```", "").strip())
                             st.success("단원 분석 완료! 3단계 탭으로 이동하세요.")
                         except Exception as e: st.error(str(e))
-            elif not st.session_state.api_key: st.error("👈 좌측 상단에 API 키를 먼저 입력해 주세요.")
+            elif not st.session_state.api_key: st.error("👈 좌측 메뉴 상단에 API 키를 먼저 입력해 주세요.")
             else: st.warning("1단계 탭에서 교과서 PDF를 업로드해 주세요.")
                 
         with tab3:
@@ -335,7 +335,7 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (완벽한 서명 인식 로직 적용)
+    # 🌟 [메뉴 5] 등록부 (접근 에러 완벽 차단 방탄조끼 코드)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
@@ -362,7 +362,6 @@ with col_main:
         
         st.write("✍️ **서명 (필수)** - 마우스나 스마트폰 터치로 직접 서명해 주세요.")
         
-        # 🌟 캔버스 컴포넌트 
         canvas_result = st_canvas(
             stroke_width=3, 
             stroke_color="#000000", 
@@ -381,21 +380,28 @@ with col_main:
                 is_valid_sig = False
                 sig_base64 = ""
                 
-                # 🌟 에러 원천 차단: 캔버스 데이터에 그려진 선(objects)이 존재하는지 확인하는 가장 확실한 방법 사용
-                if canvas_result is not None and canvas_result.json_data is not None:
-                    if len(canvas_result.json_data.get("objects", [])) > 0:
-                        is_valid_sig = True
-                        if canvas_result.image_data is not None:
-                            img_array = canvas_result.image_data.astype('uint8')
-                            img_rgba = Image.fromarray(img_array, 'RGBA')
-                            img_rgb = Image.new("RGB", img_rgba.size, (255, 255, 255))
-                            img_rgb.paste(img_rgba, mask=img_rgba.split()[3])
-                            buffered = io.BytesIO()
-                            img_rgb.save(buffered, format="PNG")
-                            sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                # 🌟 완벽한 에러 차단: image_data 프로퍼티 접근 자체를 try-except 안에서 실행
+                try:
+                    if canvas_result is not None:
+                        img_array = canvas_result.image_data
+                        if img_array is not None:
+                            # 캔버스에 실제로 그려진 픽셀(투명도 알파채널)이 존재하는지 검사
+                            if np.sum(img_array[:, :, 3]) > 0:
+                                is_valid_sig = True
+                                img_rgba = Image.fromarray(img_array.astype('uint8'), 'RGBA')
+                                img_rgb = Image.new("RGB", img_rgba.size, (255, 255, 255))
+                                img_rgb.paste(img_rgba, mask=img_rgba.split()[3])
+                                buffered = io.BytesIO()
+                                img_rgb.save(buffered, format="PNG")
+                                sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                except RuntimeError:
+                    # 라이브러리 특유의 동기화 지연 RuntimeError 무시
+                    pass
+                except Exception:
+                    pass
                 
                 if not is_valid_sig:
-                    st.warning("⚠️ 서명이 인식되지 않았습니다. 캔버스에 마우스(터치)로 서명을 그려주세요!")
+                    st.warning("⚠️ 서명이 인식되지 않았거나 전송 중입니다. 서명을 캔버스에 그리신 후 1초 뒤에 다시 버튼을 눌러주세요!")
                 else:
                     new_row = pd.DataFrame([{
                         "연번": len(st.session_state.registry_df)+1, 
