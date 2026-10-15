@@ -45,9 +45,8 @@ if "worksheet_detail" not in st.session_state: st.session_state.worksheet_detail
 if "quiz_detail" not in st.session_state: st.session_state.quiz_detail = None
 if "final_subject" not in st.session_state: st.session_state.final_subject = "공통국어"
 
-# 🌟 서명 완벽 저장을 위한 전용 세션(단방향 금고) 추가
+# 🌟 서명용 캔버스 초기화 키
 if "canvas_key" not in st.session_state: st.session_state.canvas_key = 0
-if "safe_signature" not in st.session_state: st.session_state.safe_signature = None
 
 if "training_list" not in st.session_state: 
     st.session_state.training_list = ["2026학년도 새학년 집중준비기간 연수", "전남글빛국어교육연구회 공개수업"]
@@ -107,10 +106,7 @@ with col_main:
     # --------------------------------------------------------------------------------
     if st.session_state.current_page == "과정안 생성":
         st.subheader("📝 개념기반 공개수업 마스터플랜 생성기")
-        
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-            "⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "📝 4. 활동지 생성", "❓ 5. 평가 출제", "🖨️ 6. 인쇄/추출"
-        ])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "📝 4. 활동지 생성", "❓ 5. 평가 출제", "🖨️ 6. 인쇄/추출"])
         
         with tab1:
             st.markdown("#### ⚙️ 수업 기본 정보 세팅")
@@ -327,7 +323,7 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (완벽한 단방향 금고 백업 로직)
+    # 🌟 [메뉴 5] 등록부 (문제의 근본 해결: return_image_data=True 추가)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
@@ -354,6 +350,7 @@ with col_main:
         
         st.write("✍️ **서명** - 마우스나 스마트폰 터치로 서명해 주세요.")
         
+        # 🌟 가장 중요한 한 줄: return_image_data=True 가 들어가야 파이썬으로 그림을 줍니다!!
         canvas_result = st_canvas(
             stroke_width=3, 
             stroke_color="#000000", 
@@ -362,27 +359,21 @@ with col_main:
             width=400, 
             drawing_mode="freedraw", 
             update_streamlit=True, 
+            return_image_data=True, 
             key=f"sig_canvas_{st.session_state.canvas_key}"
         )
-        
-        # 🌟 [가장 핵심적인 해결책] 캔버스에 선(objects)이 그려진 상태일 때만 금고에 저장합니다!
-        # 제출 버튼을 눌러서 캔버스가 0.1초 하얗게 증발해도 선이 없으므로 금고에 있는 진짜 서명은 절대 지워지지 않습니다.
-        if canvas_result is not None and canvas_result.json_data is not None:
-            objects = canvas_result.json_data.get("objects", [])
-            if len(objects) > 0 and canvas_result.image_data is not None:
-                st.session_state.safe_signature = canvas_result.image_data.copy()
 
         if st.button("✅ 서명 완료 및 제출", type="primary", use_container_width=True):
             if not in_name:
                 st.warning("이름을 입력하세요.")
-            elif st.session_state.safe_signature is None:
-                st.warning("⚠️ 서명을 먼저 그려주세요!")
+            elif canvas_result.image_data is None:
+                st.warning("⚠️ 서명을 그려주세요!")
             else:
                 sig_base64 = ""
-                # 금고에 안전하게 보관된 서명을 꺼내서 무조건 저장합니다.
-                img_array = st.session_state.safe_signature
+                img_array = canvas_result.image_data
                 
-                try:
+                # 배경이 완전히 비어있는지(흰색/투명) 확인
+                if np.min(img_array[:, :, :3]) < 255:
                     img_pil = Image.fromarray(img_array.astype('uint8'), 'RGBA')
                     img_rgb = Image.new("RGB", img_pil.size, (255, 255, 255))
                     img_rgb.paste(img_pil, mask=img_pil.split()[3])
@@ -390,27 +381,26 @@ with col_main:
                     buffered = io.BytesIO()
                     img_rgb.save(buffered, format="PNG")
                     sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                except Exception:
-                    pass
-                
-                new_row = pd.DataFrame([{
-                    "연번": len(st.session_state.registry_df)+1, 
-                    "연수명": selected_training, 
-                    "소속": in_dept, 
-                    "직위": in_pos, 
-                    "이름": in_name, 
-                    "서명 상태": "✅ 완료", 
-                    "서명 이미지": sig_base64, 
-                    "등록 일시": datetime.now().strftime("%m-%d %H:%M")
-                }])
-                st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
-                st.success(f"{in_name} 선생님의 손글씨 서명이 완벽하게 등록되었습니다!")
-                
-                # 다음 사람을 위해 금고와 캔버스 리셋
-                st.session_state.safe_signature = None
-                st.session_state.canvas_key += 1
-                time.sleep(0.5)
-                st.rerun()
+                    
+                    new_row = pd.DataFrame([{
+                        "연번": len(st.session_state.registry_df)+1, 
+                        "연수명": selected_training, 
+                        "소속": in_dept, 
+                        "직위": in_pos, 
+                        "이름": in_name, 
+                        "서명 상태": "✅ 완료", 
+                        "서명 이미지": sig_base64, 
+                        "등록 일시": datetime.now().strftime("%m-%d %H:%M")
+                    }])
+                    st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
+                    st.success(f"{in_name} 선생님의 손글씨 서명이 완벽하게 등록되었습니다!")
+                    
+                    # 캔버스 리셋
+                    st.session_state.canvas_key += 1
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.warning("⚠️ 서명이 인식되지 않았습니다. 캔버스에 서명을 다시 그려주세요!")
                     
         st.markdown("</div>", unsafe_allow_html=True)
         
