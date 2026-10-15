@@ -3,8 +3,11 @@ import pdfplumber
 import json
 import io
 import time
+import base64
+import numpy as np
 import pandas as pd
 from datetime import datetime
+from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 from google import genai
 
@@ -45,8 +48,9 @@ if "final_subject" not in st.session_state: st.session_state.final_subject = "�
 
 if "training_list" not in st.session_state: 
     st.session_state.training_list = ["2026학년도 새학년 집중준비기간 연수", "전남글빛국어교육연구회 공개수업"]
+# 서명 이미지 저장을 위해 '서명 이미지' 컬럼 추가
 if "registry_df" not in st.session_state: 
-    st.session_state.registry_df = pd.DataFrame(columns=["연번", "연수명", "소속", "직위", "이름", "서명 상태", "등록 일시"])
+    st.session_state.registry_df = pd.DataFrame(columns=["연번", "연수명", "소속", "직위", "이름", "서명 상태", "서명 이미지", "등록 일시"])
 
 # 상단 헤더
 st.title("🚀 AI 에듀테크 수퍼 앱 (feat. 개념기반 교육과정)")
@@ -121,8 +125,6 @@ with col_main:
         # [탭 1] 기본 설정
         with tab1:
             st.markdown("#### ⚙️ 수업 기본 정보 세팅")
-            st.caption("여기서 입력하신 정보는 인쇄될 지도안과 학생 활동지에 자동으로 깔끔하게 인쇄됩니다.")
-            
             c1, c2 = st.columns(2)
             with c1:
                 subj_list = ["공통국어", "윤리와 사상", "생활과 윤리", "➕ 직접 입력 (새 과목 추가)"]
@@ -261,10 +263,10 @@ with col_main:
             if st.session_state.worksheet_detail:
                 w = st.session_state.worksheet_detail
                 d = st.session_state.selected_session_detail
-                html_work = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; }} .box {{ border: 1px dashed #333; padding: 15px; margin-bottom: 10px; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #2b8a3e; color: white; cursor: pointer; border-radius: 5px; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 활동지 인쇄하기</button><div style="border: 2px solid #000; padding: 15px; border-radius: 8px;"><h1 style="text-align:center; margin:0;">[탐구 활동지] {w.get('title','')}</h1><div style="text-align:right; font-weight:bold; margin-top:10px;">{info_line}</div><div><b>[거시/미시]</b> {d.get('macro','')} / {d.get('micro','')}</div><div><b>[목표]</b> {d.get('objective','')}</div><div><b>[핵심 아이디어]</b> {d.get('big_idea','')}</div></div><h3>{w.get('act1_title','')}</h3><div class="box">{w.get('act1_desc','').replace(chr(10), '<br>')}</div><h3>{w.get('act2_title','')}</h3><div class="box"><b>▶ 나의 질문: </b></div><h3>{w.get('act3_title','')}</h3><div class="box" style="min-height:100px;"></div><h3>{w.get('wrap_up','[마무리]')}</h3></body></html>"""
+                html_work = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; }} .box {{ border: 1px dashed #333; padding: 15px; margin-bottom: 10px; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #2b8a3e; color: white; cursor: pointer; border-radius: 5px; text-align:center; border:none; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 활동지 인쇄하기</button><div style="border: 2px solid #000; padding: 15px; border-radius: 8px;"><h1 style="text-align:center; margin:0;">[탐구 활동지] {w.get('title','')}</h1><div style="text-align:right; font-weight:bold; margin-top:10px;">{info_line}</div><div><b>[거시/미시]</b> {d.get('macro','')} / {d.get('micro','')}</div><div><b>[목표]</b> {d.get('objective','')}</div><div><b>[핵심 아이디어]</b> {d.get('big_idea','')}</div></div><h3>{w.get('act1_title','')}</h3><div class="box">{w.get('act1_desc','').replace(chr(10), '<br>')}</div><h3>{w.get('act2_title','')}</h3><div class="box"><b>▶ 나의 질문: </b></div><h3>{w.get('act3_title','')}</h3><div class="box" style="min-height:100px;"></div><h3>{w.get('wrap_up','[마무리]')}</h3></body></html>"""
                 with c_b: st.download_button("📥 2. 활동지 (HTML)", data=html_work.encode('utf-8'), file_name="활동지.html", mime="text/html", type="primary", use_container_width=True)
 
-            # 3. 형성평가지 HTML & 4. 퀴즈앤 CSV 생성
+            # 3. 형성평가지 HTML & 4. 퀴즈앤 CSV
             if st.session_state.quiz_detail:
                 q = st.session_state.quiz_detail
                 ox_html = "".join([f"<li>{item['q']} ( O , X )</li>" for item in q.get('ox_quiz', [])])
@@ -282,7 +284,7 @@ with col_main:
                 for item in q.get('mcq', []): ans_html += f"<li><b>[객관식]</b> 정답: {item['a']} - {item.get('exp','')}</li>"
                 ans_html += "</ul>"
 
-                html_quiz = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #f59f00; color: white; text-align: center; cursor: pointer; border-radius: 5px; }} .page-break {{ page-break-before: always; margin-top: 40px; padding-top: 20px; border-top: 2px dashed #000; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 평가 및 해설지 인쇄</button><div style="border:2px solid #000; padding:15px; text-align:center; border-radius:8px;"><h1 style="margin:0;">[형성평가] {q.get('title', '')}</h1><div style="text-align:right; font-weight:bold; margin-top:10px;">{info_line}</div></div><h3>🎯 O/X 퀴즈</h3><ul>{ox_html}</ul><h3>🎯 초성 퀴즈</h3><ul>{init_html}</ul><h3>🎯 어휘 퀴즈</h3><ul>{vocab_html}</ul><h3>🎯 객관식 퀴즈</h3><ol>{mcq_html}</ol>
+                html_quiz = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #f59f00; color: white; text-align: center; cursor: pointer; border-radius: 5px; border:none; }} .page-break {{ page-break-before: always; margin-top: 40px; padding-top: 20px; border-top: 2px dashed #000; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 평가 및 해설지 인쇄</button><div style="border:2px solid #000; padding:15px; text-align:center; border-radius:8px;"><h1 style="margin:0;">[형성평가] {q.get('title', '')}</h1><div style="text-align:right; font-weight:bold; margin-top:10px;">{info_line}</div></div><h3>🎯 O/X 퀴즈</h3><ul>{ox_html}</ul><h3>🎯 초성 퀴즈</h3><ul>{init_html}</ul><h3>🎯 어휘 퀴즈</h3><ul>{vocab_html}</ul><h3>🎯 객관식 퀴즈</h3><ol>{mcq_html}</ol>
                 <div class="page-break"><h2 style="color: #e03131;">[교사용] 정답 및 해설</h2>{ans_html}</div></body></html>"""
                 with c_c: st.download_button("📥 3. 평가/해설 (HTML)", data=html_quiz.encode('utf-8'), file_name="형성평가.html", mime="text/html", type="primary", use_container_width=True)
 
@@ -346,7 +348,7 @@ with col_main:
                 st.warning("사안의 핵심 내용을 입력해 주세요.")
 
     # --------------------------------------------------------------------------------
-    # [기존 메뉴들] 세특 초안, 알림장, 등록부
+    # [메뉴 4] 세특 초안, 알림장
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "세특 초안":
         st.subheader("💡 학생 세특(관찰) 초안 생성기")
@@ -375,31 +377,117 @@ with col_main:
                         st.markdown("<div class='custom-card'>" + call_gemini_robust(st.session_state.api_key, prompt) + "</div>", unsafe_allow_html=True)
                     except Exception as e: st.error(str(e))
 
+    # --------------------------------------------------------------------------------
+    # 🌟 [메뉴 5] 등록부 (손글씨 이미지 HTML 인쇄 기능 대폭 강화)
+    # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
-        st.subheader("📋 온라인 등록부 및 전자 서명")
-        with st.expander("⚙️ 연수명 관리 (비밀번호: 1234)"):
-            if st.text_input("비밀번호", type="password") == "1234":
+        st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
+        
+        with st.expander("⚙️ 연수명/일시/장소 관리 (비밀번호: 1234)"):
+            if st.text_input("비밀번호", type="password", key="reg_pw") == "1234":
                 new_training = st.text_input("새로운 연수명 입력")
                 if st.button("➕ 연수명 추가"):
                     st.session_state.training_list.append(new_training)
                     st.rerun()
+        
         st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
         selected_training = st.selectbox("📌 연수명 선택", st.session_state.training_list)
+        
+        c_date, c_loc = st.columns(2)
+        with c_date: reg_date = st.text_input("📅 연수 일시", placeholder="예) 2026. 10. 14. 14:00")
+        with c_loc: reg_loc = st.text_input("🏫 연수 장소", placeholder="예) 대강당")
+        st.write("---")
+        
         c1, c2, c3 = st.columns(3)
-        with c1: in_dept = st.text_input("소속")
-        with c2: in_pos = st.text_input("직위")
-        with c3: in_name = st.text_input("이름")
-        st.write("✍️ **서명** (아래 캔버스에 서명하세요)")
-        st_canvas(stroke_width=2, stroke_color="#000", background_color="#f0f0f0", height=100, width=400, drawing_mode="freedraw", key="sig")
+        with c1: in_dept = st.text_input("소속", placeholder="예) 광영고")
+        with c2: in_pos = st.text_input("직위", placeholder="예) 교사")
+        with c3: in_name = st.text_input("이름", placeholder="예) 홍길동")
+        
+        st.write("✍️ **서명** (아래 캔버스에 마우스나 터치로 서명하세요)")
+        canvas_result = st_canvas(stroke_width=2, stroke_color="#000", background_color="#ffffff", height=100, width=400, drawing_mode="freedraw", key="sig")
+        
         if st.button("✅ 서명 완료 및 제출", type="primary", use_container_width=True):
             if in_name:
-                new_row = pd.DataFrame([{"연번": len(st.session_state.registry_df)+1, "연수명": selected_training, "소속": in_dept, "직위": in_pos, "이름": in_name, "서명 상태": "✅ 완료", "등록 일시": datetime.now().strftime("%m-%d %H:%M")}])
+                sig_base64 = ""
+                # 서명 이미지를 Base64 텍스트로 변환하여 저장
+                if canvas_result.image_data is not None:
+                    img_array = canvas_result.image_data.astype('uint8')
+                    img = Image.fromarray(img_array, 'RGBA')
+                    buffered = io.BytesIO()
+                    img.save(buffered, format="PNG")
+                    sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                
+                new_row = pd.DataFrame([{
+                    "연번": len(st.session_state.registry_df)+1, 
+                    "연수명": selected_training, 
+                    "소속": in_dept, 
+                    "직위": in_pos, 
+                    "이름": in_name, 
+                    "서명 상태": "✅ 완료", 
+                    "서명 이미지": sig_base64, # HTML 인쇄용 숨겨진 데이터
+                    "등록 일시": datetime.now().strftime("%m-%d %H:%M")
+                }])
                 st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
-                st.success(f"{in_name}님 등록 완료!")
+                st.success(f"{in_name}님 등록 완료! (서명이 저장되었습니다)")
+            else:
+                st.warning("이름을 입력하세요.")
         st.markdown("</div>", unsafe_allow_html=True)
-        st.dataframe(st.session_state.registry_df, hide_index=True, use_container_width=True)
+        
+        # 화면에는 서명 이미지(Base64) 텍스트가 너무 기니까 숨기고 보여줌
+        display_df = st.session_state.registry_df.drop(columns=["서명 이미지"])
+        st.dataframe(display_df, hide_index=True, use_container_width=True)
+        
         if not st.session_state.registry_df.empty:
-            st.download_button("📥 엑셀(CSV) 다운로드", data=st.session_state.registry_df.to_csv(index=False, encoding='utf-8-sig'), file_name="등록부.csv", mime="text/csv")
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                st.download_button("📥 엑셀(CSV) 다운로드", data=display_df.to_csv(index=False, encoding='utf-8-sig'), file_name="등록부.csv", mime="text/csv", use_container_width=True)
+            
+            with col_d2:
+                # 🌟 손글씨 이미지가 포함된 완벽한 인쇄용 HTML 조립
+                rows_html = ""
+                for idx, row in st.session_state.registry_df.iterrows():
+                    # 저장된 Base64 서명이 있으면 이미지 태그로, 없으면 빈칸 처리
+                    img_tag = f'<img src="data:image/png;base64,{row["서명 이미지"]}" style="max-height: 40px;"/>' if row["서명 이미지"] else ""
+                    rows_html += f"<tr><td>{row['연번']}</td><td>{row['소속']}</td><td>{row['직위']}</td><td>{row['이름']}</td><td>{img_tag}</td></tr>"
+
+                html_registry = f"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>연수 등록부</title>
+<style>
+    @page {{ size: A4; margin: 20mm; }}
+    body {{ font-family: 'Malgun Gothic', sans-serif; line-height: 1.5; color: #000; }}
+    h1 {{ text-align: center; font-size: 26px; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 20px; letter-spacing: 2px; }}
+    .info-table {{ width: 100%; border: none; margin-bottom: 15px; font-size: 15px; font-weight: bold; }}
+    .info-table td {{ padding: 5px; border: none; }}
+    .reg-table {{ width: 100%; border-collapse: collapse; font-size: 14px; text-align: center; }}
+    .reg-table th, .reg-table td {{ border: 1px solid #000; padding: 10px; vertical-align: middle; height: 45px; }}
+    .reg-table th {{ background-color: #f2f2f2; }}
+    .col-no {{ width: 8%; }}
+    .col-dept {{ width: 25%; }}
+    .col-pos {{ width: 15%; }}
+    .col-name {{ width: 20%; }}
+    .col-sig {{ width: 32%; }}
+    .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #2b8a3e; color: white; text-align: center; cursor: pointer; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; }}
+    @media print {{ .print-btn {{ display: none; }} }}
+</style>
+</head>
+<body>
+    <button class="print-btn" onclick="window.print()">🖨️ 서명 포함 등록부 인쇄</button>
+    <h1>연수(회의) 등록부</h1>
+    <table class="info-table">
+        <tr><td width="15%">연 수 명 :</td><td>{selected_training}</td></tr>
+        <tr><td>일 시 :</td><td>{reg_date}</td></tr>
+        <tr><td>장 소 :</td><td>{reg_loc}</td></tr>
+    </table>
+    <table class="reg-table">
+        <tr><th class="col-no">연번</th><th class="col-dept">소속</th><th class="col-pos">직위</th><th class="col-name">이름</th><th class="col-sig">서명</th></tr>
+        {rows_html}
+    </table>
+</body>
+</html>"""
+                st.download_button("🖨️ 등록부 인쇄 (손글씨 포함 HTML)", data=html_registry.encode('utf-8'), file_name=f"등록부_{selected_training}.html", mime="text/html", type="primary", use_container_width=True)
 
 # ==========================================
 # [오른쪽 20%] 유용한 교육/생활 정보
