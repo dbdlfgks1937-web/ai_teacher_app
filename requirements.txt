@@ -4,3 +4,5 @@ pandas
 python-docx
 streamlit-drawable-canvas
 google-genai
+numpy
+pillow
