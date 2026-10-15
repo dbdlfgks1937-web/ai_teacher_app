@@ -1,6 +1,6 @@
-Streamline
-Pdfplumber
-Pandas
-Python-docx
-Streamline-drawable-canvas
-Requests
+streamlit
+pdfplumber
+pandas
+python-docx
+streamlit-drawable-canvas
+requests
