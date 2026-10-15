@@ -47,29 +47,45 @@ def save_registry(df):
     df.to_csv(REGISTRY_FILE, index=False, encoding="utf-8-sig")
 
 # ---------------------------------------------------------
-# 1. 화면 기본 설정 & 외부 CSS 파일 불러오기
+# 1. 화면 기본 설정
 # ---------------------------------------------------------
 st.set_page_config(page_title="AI 에듀테크 수퍼 앱", layout="wide", initial_sidebar_state="collapsed")
 
-custom_css = """
+# 🌟 CSS 디자인 통합 (이 코드가 첫 번째 요소로 렌더링됨)
+css_content = """
 <style>
-    div[data-baseweb="tab-list"] button p {
-        font-size: 1.15rem !important;
-        font-weight: 700 !important;
-        letter-spacing: -0.5px;
-    }
+    /* 기본 탭 및 텍스트 스타일 */
+    div[data-baseweb="tab-list"] button p { font-size: 1.15rem !important; font-weight: 700 !important; letter-spacing: -0.5px; }
     .menu-title { font-size: 1.1rem; font-weight: 800; color: #1f4b8e; margin-top: 15px; margin-bottom: 5px; }
+    .block-container { padding-top: 1rem; }
+    header[data-testid="stHeader"] { background-color: transparent; }
+    
+    /* 🌟 핵심: 상단 헤더 컨테이너를 스크롤 시 화면 상단에 고정하고 그라데이션 효과 부여 */
+    div[data-testid="stBlockContainer"] > div:nth-child(2) {
+        position: sticky;
+        top: 0px;
+        z-index: 990;
+        /* 다크모드/라이트모드 상관없이 배경색을 가져와서 부드럽게 페이드 아웃 */
+        background: linear-gradient(180deg, var(--background-color) 85%, transparent 100%);
+        padding-top: 10px;
+        padding-bottom: 20px;
+        margin-top: -10px;
+    }
 </style>
 """
-st.markdown(custom_css, unsafe_allow_html=True)
 
 def load_css(file_name):
     try:
         with open(file_name, "r", encoding="utf-8") as f:
-            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+            return f.read()
     except FileNotFoundError:
-        pass
-load_css("style.css")
+        return ""
+
+external_css = load_css("style.css")
+if external_css:
+    css_content += f"<style>{external_css}</style>"
+
+st.markdown(css_content, unsafe_allow_html=True)
 
 # 세션 상태(임시 메모리) 초기화
 if "current_page" not in st.session_state: st.session_state.current_page = "과정안 생성"
@@ -80,16 +96,24 @@ if "worksheet_detail" not in st.session_state: st.session_state.worksheet_detail
 if "quiz_detail" not in st.session_state: st.session_state.quiz_detail = None
 if "final_subject" not in st.session_state: st.session_state.final_subject = "공통국어"
 if "canvas_key" not in st.session_state: st.session_state.canvas_key = 0
+if "api_key" not in st.session_state: st.session_state.api_key = ""
 
-# 🌟 앱 시작 시 디스크(파일)에서 데이터를 쫙 불러와서 세션에 덮어씌웁니다. (새로고침 방어)
 if "training_data" not in st.session_state: 
     st.session_state.training_data = load_training_data()
 if "registry_df" not in st.session_state: 
     st.session_state.registry_df = load_registry()
 
-# 상단 헤더
-st.title("🚀 AI 에듀테크 수퍼 앱 (feat. 개념기반 교육과정)")
-st.write("---")
+# ==========================================
+# 🌟 상단 헤더 컨테이너 (중앙 정렬 및 고정)
+# ==========================================
+header_container = st.container()
+with header_container:
+    c1, c2, c3 = st.columns([2, 6, 2])
+    with c2:
+        st.markdown("<h2 style='text-align:center; margin:0; padding-top:5px;'>🚀 AI 에듀테크 수퍼 앱 <span style='font-size:1.1rem; opacity:0.7;'>(feat. 개념기반 교육과정)</span></h2>", unsafe_allow_html=True)
+    with c3:
+        st.text_input("API Key", type="password", placeholder="🔑 Gemini API 키 입력", label_visibility="collapsed", key="api_key")
+    st.markdown("<hr style='margin-bottom:0px; margin-top:5px;'>", unsafe_allow_html=True)
 
 # ==========================================
 # 🌟 [AI 호출 함수] 
@@ -177,7 +201,7 @@ with col_main:
                             st.session_state.proposed_sessions = json.loads(res1.replace("```json", "").replace("```", "").strip())
                             st.success("단원 분석 완료! 3단계 탭으로 이동하세요.")
                         except Exception as e: st.error(str(e))
-            elif not st.session_state.get("api_key"): st.error("👈 우측 상단에 API 키를 먼저 입력해 주세요.")
+            elif not st.session_state.get("api_key"): st.error("⚠️ 상단 제목 옆에 API 키를 먼저 입력해 주세요.")
             else: st.warning("1단계 탭에서 교과서 PDF를 업로드해 주세요.")
                 
         with tab3:
@@ -303,7 +327,7 @@ with col_main:
         with col2: event_date = st.text_input("행사 일시 및 장소", placeholder="예) 6월 10일 (수), 대강당")
         event_purpose = st.text_area("행사 목적 및 주요 식순(키워드)", placeholder="예) 개회식, 교장선생님 인사말, 학생 서포터즈 발대식, 부스 투어")
         if st.button("🎉 공식 기안문 & 대본 생성하기", type="primary"):
-            if not st.session_state.get("api_key"): st.error("👈 우측 상단에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.get("api_key"): st.error("⚠️ 상단 제목 옆에 API 키를 먼저 입력해 주세요.")
             elif event_name and event_purpose:
                 with st.spinner("AI가 교무 행정 양식에 맞춰 완벽한 문서를 기안하고 있습니다..."):
                     prompt = f"당신은 고등학교 부장교사입니다. 행사명: {event_name}, 일시/장소: {event_date}, 주요내용: {event_purpose}. \n두 가지를 작성하세요.\n1. 내부 결재용 기안문 초안 (목적, 방침, 세부 일정 포함)\n2. 행사 당일 사회자(진행자)의 매끄러운 오프닝 및 진행 시나리오 대본"
@@ -318,7 +342,7 @@ with col_main:
         st.subheader("🛡️ 교권 보호 사안 보고서 & 상담 매뉴얼 생성기")
         incident_memo = st.text_area("발생한 사안이나 민원 내용을 자유롭게 적어주세요.", placeholder="예) 수업 중에 A학생이 엎드려 자길래 깨웠더니 소리를 지르고 욕설을 함.", height=150)
         if st.button("🛡️ 객관적 보고서 및 대응 스크립트 생성", type="primary"):
-            if not st.session_state.get("api_key"): st.error("👈 우측 상단에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.get("api_key"): st.error("⚠️ 상단 제목 옆에 API 키를 먼저 입력해 주세요.")
             elif incident_memo:
                 with st.spinner("AI가 감정을 배제하고 공식 보고서와 정중한 대응 매뉴얼을 작성 중입니다..."):
                     prompt = f"당신은 학교 폭력 및 교권 침해 대응 전문가입니다. 다음 교사의 메모를 바탕으로 두 가지를 작성하세요: {incident_memo}\n1. 육하원칙에 입각한 객관적이고 건조한 공식 사안 보고서 초안\n2. 학부모 상담 시 감정적 충돌을 피하면서 단호하고 정중하게 대응할 수 있는 교사용 전화/면담 스크립트"
@@ -336,7 +360,7 @@ with col_main:
         with col2: stu_level = st.selectbox("성취 수준", ["상 (우수함, 주도적)", "중 (성실함, 무난함)", "하 (노력 요함)"])
         stu_activity = st.text_area("주요 관찰 내용 및 활동 키워드", placeholder="예) 인공지능 윤리를 주제로 한 찬반 토론에서 사회자 역할을 맡아 갈등을 조율함.")
         if st.button("✨ 세특 초안 생성하기", type="primary"):
-            if not st.session_state.get("api_key"): st.error("👈 우측 상단에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.get("api_key"): st.error("⚠️ 상단 제목 옆에 API 키를 먼저 입력해 주세요.")
             elif stu_name and stu_activity:
                 with st.spinner("NEIS 양식에 맞게 문장을 작성 중입니다..."):
                     prompt = f"당신은 고등학교 교사입니다. 학생 '{stu_name}'의 세특을 작성합니다. 수준: {stu_level} / 관찰: {stu_activity}. 명사형 종결어미(~함, ~임)를 사용하고, 500자 내외로 전문적이고 긍정적으로 작성하세요."
@@ -348,7 +372,7 @@ with col_main:
         st.subheader("💌 학급 알림장/가정통신문 자동 생성기")
         msg_context = st.text_area("전달할 핵심 내용 입력", placeholder="예) 내일 체험학습 감. 도시락 꼭 싸오고 8시 반까지 운동장 집합.")
         if st.button("💌 알림장 문구 생성", type="primary"):
-            if not st.session_state.get("api_key"): st.error("👈 우측 상단에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.get("api_key"): st.error("⚠️ 상단 제목 옆에 API 키를 먼저 입력해 주세요.")
             elif msg_context:
                 with st.spinner("정중한 문구로 변환 중입니다..."):
                     prompt = f"다정하고 꼼꼼한 고등학교 담임교사입니다. 학부모님과 학생 단체 문자로 보낼 수 있게 알림장 형태로 다듬어주세요. 내용: {msg_context}."
@@ -357,7 +381,7 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (완벽한 파일 영구 저장 및 드롭다운 오류 해결)
+    # 🌟 [메뉴 5] 등록부
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
@@ -366,14 +390,12 @@ with col_main:
             if st.text_input("비밀번호", type="password", key="reg_pw") == "1234":
                 st.markdown("**새로운 연수 개설**")
                 c_new1, c_new2, c_new3 = st.columns([2, 1, 1])
-                # 🌟 고유 키를 부여해서 입력값이 꼬이지 않도록 완벽 분리
                 with c_new1: new_title = st.text_input("연수명", key="new_title_input")
                 with c_new2: new_date = st.text_input("일시", placeholder="예) 10. 20. 15:00", key="new_date_input")
                 with c_new3: new_loc = st.text_input("장소", placeholder="예) 시청각실", key="new_loc_input")
                 
                 if st.button("➕ 연수 추가하기"):
                     if new_title:
-                        # 파일에 영구 저장 (드롭다운 즉시 반영)
                         st.session_state.training_data[new_title] = {"date": new_date, "loc": new_loc}
                         save_training_data(st.session_state.training_data)
                         
@@ -382,7 +404,6 @@ with col_main:
                         st.rerun()
         
         st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
-        # 저장된 리스트를 가져와서 드롭다운 메뉴 렌더링
         selected_training = st.selectbox("📌 참여할 연수 선택", list(st.session_state.training_data.keys()))
         
         reg_date = st.session_state.training_data[selected_training]["date"]
@@ -441,7 +462,6 @@ with col_main:
                         "등록 일시": datetime.now().strftime("%m-%d %H:%M")
                     }])
                     
-                    # 🌟 서명 완료 시 CSV 파일로 영구 저장!
                     st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
                     save_registry(st.session_state.registry_df)
                     
@@ -508,18 +528,9 @@ with col_main:
                 st.download_button("🖨️ 등록부 인쇄 (손글씨 포함 HTML)", data=html_registry.encode('utf-8'), file_name=f"{selected_training}_등록부.html", mime="text/html", type="primary", use_container_width=True)
 
 # ==========================================
-# [오른쪽 20%] 🌟 API 키 및 유용한 정보
+# [오른쪽 20%] 🌟 깔끔해진 우측 패널
 # ==========================================
 with col_info:
-    st.markdown("<div style='background-color:#e3f2fd; padding: 15px; border-radius: 10px; border: 2px solid #2196f3; margin-bottom: 20px;'>", unsafe_allow_html=True)
-    st.markdown("<h4 style='margin-top:0; color:#0d47a1; text-align:center;'>🔑 API 키 입력 (필수)</h4>", unsafe_allow_html=True)
-    st.session_state.api_key = st.text_input("Gemini API 키", type="password", placeholder="여기에 키를 붙여넣으세요", label_visibility="collapsed")
-    if not st.session_state.api_key: 
-        st.markdown("<div style='color:#c62828; font-weight:bold; text-align:center; font-size:14px;'>⚠️ 키 입력이 필요합니다</div>", unsafe_allow_html=True)
-    else: 
-        st.markdown("<div style='color:#2e7d32; font-weight:bold; text-align:center; font-size:14px;'>🟢 AI 연동 준비 완료!</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
     st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
     st.markdown("#### 🌤️ 오늘의 날씨")
     st.markdown("**전남 광양시 중마동**")
