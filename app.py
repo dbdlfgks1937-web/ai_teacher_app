@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pdfplumber
 import json
 import io
@@ -23,7 +24,6 @@ def load_training_data():
         with open(TRAINING_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     else:
-        # 파일이 없으면 기본 연수 세팅 생성
         default_data = {
             "2026학년도 새학년 집중준비기간 연수": {"date": "2026. 02. 11. 14:00", "loc": "본관 대강당"},
             "전남글빛국어교육연구회 공개수업": {"date": "2026. 10. 14. 14:00", "loc": "1학년 6반 교실"}
@@ -51,21 +51,18 @@ def save_registry(df):
 # ---------------------------------------------------------
 st.set_page_config(page_title="AI 에듀테크 수퍼 앱", layout="wide", initial_sidebar_state="collapsed")
 
-# 🌟 CSS 디자인 통합 (이 코드가 첫 번째 요소로 렌더링됨)
+# 🌟 CSS 디자인 통합 (헤더 상단 고정 및 그라데이션)
 css_content = """
 <style>
-    /* 기본 탭 및 텍스트 스타일 */
     div[data-baseweb="tab-list"] button p { font-size: 1.15rem !important; font-weight: 700 !important; letter-spacing: -0.5px; }
     .menu-title { font-size: 1.1rem; font-weight: 800; color: #1f4b8e; margin-top: 15px; margin-bottom: 5px; }
     .block-container { padding-top: 1rem; }
     header[data-testid="stHeader"] { background-color: transparent; }
     
-    /* 🌟 핵심: 상단 헤더 컨테이너를 스크롤 시 화면 상단에 고정하고 그라데이션 효과 부여 */
     div[data-testid="stBlockContainer"] > div:nth-child(2) {
         position: sticky;
         top: 0px;
         z-index: 990;
-        /* 다크모드/라이트모드 상관없이 배경색을 가져와서 부드럽게 페이드 아웃 */
         background: linear-gradient(180deg, var(--background-color) 85%, transparent 100%);
         padding-top: 10px;
         padding-bottom: 20px;
@@ -96,6 +93,7 @@ if "worksheet_detail" not in st.session_state: st.session_state.worksheet_detail
 if "quiz_detail" not in st.session_state: st.session_state.quiz_detail = None
 if "final_subject" not in st.session_state: st.session_state.final_subject = "공통국어"
 if "canvas_key" not in st.session_state: st.session_state.canvas_key = 0
+if "slide_canvas_key" not in st.session_state: st.session_state.slide_canvas_key = 0 # 판서용 초기화 키
 if "api_key" not in st.session_state: st.session_state.api_key = ""
 
 if "training_data" not in st.session_state: 
@@ -145,6 +143,7 @@ with col_menu:
             st.rerun()
             
     st.markdown("<div class='menu-title'>📚 수업 지원</div>", unsafe_allow_html=True)
+    nav_button("🖥️ 슬라이드 & 스마트 판서", "슬라이드") # 🌟 새로 추가된 메뉴!
     nav_button("📝 과정안/학습지 출제", "과정안 생성")
     
     st.markdown("<div class='menu-title'>📝 평가/기록 지원</div>", unsafe_allow_html=True)
@@ -160,9 +159,113 @@ with col_menu:
 
 with col_main:
     # --------------------------------------------------------------------------------
+    # 🌟 [신규 메뉴 0] 슬라이드 & 스마트 판서
+    # --------------------------------------------------------------------------------
+    if st.session_state.current_page == "슬라이드":
+        st.subheader("🖥️ AI 슬라이드 & 스마트 판서")
+        
+        c_tool1, c_tool2 = st.columns([3, 7])
+        
+        # 좌측: 스마트 타이머 설정
+        with c_tool1:
+            st.markdown("#### ⏱️ 스마트 타이머")
+            timer_html = """
+            <div style="text-align: center; border: 2px solid #1f4b8e; padding: 10px; border-radius: 10px; background: #e3f2fd;">
+                <h1 id="timer_display" style="font-size: 2.5rem; margin:0; color: #0d47a1;">05:00</h1>
+                <div style="margin-top: 10px;">
+                    <button onclick="startTimer()" style="padding: 5px 10px; font-size: 1rem; cursor: pointer; border-radius:5px; border:none; background:#4caf50; color:white; font-weight:bold;">▶ 시작</button>
+                    <button onclick="pauseTimer()" style="padding: 5px 10px; font-size: 1rem; cursor: pointer; border-radius:5px; border:none; background:#ff9800; color:white; font-weight:bold;">⏸ 정지</button>
+                    <button onclick="resetTimer()" style="padding: 5px 10px; font-size: 1rem; cursor: pointer; border-radius:5px; border:none; background:#f44336; color:white; font-weight:bold;">🔄 리셋</button>
+                </div>
+                <script>
+                    let timeLeft = 300;
+                    let timerInterval;
+                    function updateDisplay() {
+                        let m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+                        let s = (timeLeft % 60).toString().padStart(2, '0');
+                        document.getElementById('timer_display').innerText = m + ":" + s;
+                    }
+                    function startTimer() {
+                        if (!timerInterval) {
+                            timerInterval = setInterval(() => {
+                                if (timeLeft > 0) { timeLeft--; updateDisplay(); }
+                                else { clearInterval(timerInterval); alert("⏰ 시간이 다 되었습니다!"); }
+                            }, 1000);
+                        }
+                    }
+                    function pauseTimer() { clearInterval(timerInterval); timerInterval = null; }
+                    function resetTimer() { pauseTimer(); timeLeft = 300; updateDisplay(); }
+                </script>
+            </div>
+            """
+            components.html(timer_html, height=140)
+
+        # 우측: 판서 도구(펜/형광펜/지우개) 설정
+        with c_tool2:
+            st.markdown("#### 🎨 칠판 도구")
+            c_mode, c_color, c_clear = st.columns([4, 3, 3])
+            with c_mode:
+                tool_mode = st.radio("도구 모드", ["✏️ 펜", "🖍️ 형광펜", "🧽 부분 지우개"], horizontal=True, label_visibility="collapsed")
+            with c_color:
+                pen_color = st.color_picker("펜/형광펜 색상", "#1f4b8e")
+            with c_clear:
+                if st.button("🗑️ 칠판 전체 지우기", use_container_width=True):
+                    st.session_state.slide_canvas_key += 1
+                    st.rerun()
+
+        # 도구 모드에 따른 캔버스 설정
+        stroke_color = pen_color
+        stroke_width = 3
+        if tool_mode == "🖍️ 형광펜":
+            h = pen_color.lstrip('#')
+            rgb = tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+            stroke_color = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.3)" # 반투명 효과
+            stroke_width = 25
+        elif tool_mode == "🧽 부분 지우개":
+            stroke_color = "#ffffff"
+            stroke_width = 40
+
+        st.write("---")
+
+        c_left, c_right = st.columns([4, 6])
+        
+        # 슬라이드 텍스트 추출/생성 영역
+        with c_left:
+            slide_topic = st.text_input("✨ AI 슬라이드 텍스트 자동 생성", placeholder="주제 입력 (예: 민주주의 핵심 원리 3가지)")
+            if st.button("🪄 슬라이드 텍스트 생성", type="primary", use_container_width=True):
+                if not st.session_state.get("api_key"):
+                    st.error("⚠️ 우측 상단에 API 키를 먼저 입력해 주세요.")
+                elif slide_topic:
+                    with st.spinner("슬라이드를 작성 중입니다..."):
+                        prompt = f"수업 시간에 활용할 슬라이드 1장 분량의 내용을 작성해줘. 주제: '{slide_topic}'.\n글씨가 잘 보이도록 줄바꿈을 넉넉히 하고, 핵심 개념 위주로 간결한 개조식(Bullet points)으로 써줘. 이모지도 적절히 활용해."
+                        try:
+                            st.session_state.slide_content = call_gemini_robust(st.session_state.api_key, prompt)
+                        except Exception as e:
+                            st.error(f"오류: {e}")
+
+            st.markdown("<div style='background-color:#f8f9fa; padding:20px; border-radius:10px; border:1px solid #ddd; min-height:460px; font-size:1.15rem; line-height:1.8;'>", unsafe_allow_html=True)
+            if "slide_content" in st.session_state:
+                st.markdown(st.session_state.slide_content)
+            else:
+                st.markdown("<div style='color:#888; text-align:center; padding-top:200px;'>주제를 입력하고 생성 버튼을 누르면<br>여기에 슬라이드 내용이 나타납니다.</div>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        # 실제 판서(칠판) 영역
+        with c_right:
+            st_canvas(
+                stroke_width=stroke_width,
+                stroke_color=stroke_color,
+                background_color="#ffffff",
+                height=565, # 왼쪽 텍스트창 높이와 비슷하게 맞춤
+                drawing_mode="freedraw",
+                key=f"slide_board_{st.session_state.slide_canvas_key}",
+            )
+            st.caption("💡 팁: 캔버스 위에 자유롭게 글씨를 쓰거나 중요한 곳에 형광펜을 칠하세요.")
+
+    # --------------------------------------------------------------------------------
     # [메뉴 1] 과정안 생성기
     # --------------------------------------------------------------------------------
-    if st.session_state.current_page == "과정안 생성":
+    elif st.session_state.current_page == "과정안 생성":
         st.subheader("📝 개념기반 공개수업 마스터플랜 생성기")
         tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "📝 4. 활동지 생성", "❓ 5. 평가 출제", "🖨️ 6. 인쇄/추출"])
         
@@ -201,7 +304,7 @@ with col_main:
                             st.session_state.proposed_sessions = json.loads(res1.replace("```json", "").replace("```", "").strip())
                             st.success("단원 분석 완료! 3단계 탭으로 이동하세요.")
                         except Exception as e: st.error(str(e))
-            elif not st.session_state.get("api_key"): st.error("⚠️ 상단 제목 옆에 API 키를 먼저 입력해 주세요.")
+            elif not st.session_state.get("api_key"): st.error("⚠️ 우측 상단에 API 키를 먼저 입력해 주세요.")
             else: st.warning("1단계 탭에서 교과서 PDF를 업로드해 주세요.")
                 
         with tab3:
@@ -327,7 +430,7 @@ with col_main:
         with col2: event_date = st.text_input("행사 일시 및 장소", placeholder="예) 6월 10일 (수), 대강당")
         event_purpose = st.text_area("행사 목적 및 주요 식순(키워드)", placeholder="예) 개회식, 교장선생님 인사말, 학생 서포터즈 발대식, 부스 투어")
         if st.button("🎉 공식 기안문 & 대본 생성하기", type="primary"):
-            if not st.session_state.get("api_key"): st.error("⚠️ 상단 제목 옆에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.get("api_key"): st.error("⚠️ 우측 상단에 API 키를 먼저 입력해 주세요.")
             elif event_name and event_purpose:
                 with st.spinner("AI가 교무 행정 양식에 맞춰 완벽한 문서를 기안하고 있습니다..."):
                     prompt = f"당신은 고등학교 부장교사입니다. 행사명: {event_name}, 일시/장소: {event_date}, 주요내용: {event_purpose}. \n두 가지를 작성하세요.\n1. 내부 결재용 기안문 초안 (목적, 방침, 세부 일정 포함)\n2. 행사 당일 사회자(진행자)의 매끄러운 오프닝 및 진행 시나리오 대본"
@@ -342,7 +445,7 @@ with col_main:
         st.subheader("🛡️ 교권 보호 사안 보고서 & 상담 매뉴얼 생성기")
         incident_memo = st.text_area("발생한 사안이나 민원 내용을 자유롭게 적어주세요.", placeholder="예) 수업 중에 A학생이 엎드려 자길래 깨웠더니 소리를 지르고 욕설을 함.", height=150)
         if st.button("🛡️ 객관적 보고서 및 대응 스크립트 생성", type="primary"):
-            if not st.session_state.get("api_key"): st.error("⚠️ 상단 제목 옆에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.get("api_key"): st.error("⚠️ 우측 상단에 API 키를 먼저 입력해 주세요.")
             elif incident_memo:
                 with st.spinner("AI가 감정을 배제하고 공식 보고서와 정중한 대응 매뉴얼을 작성 중입니다..."):
                     prompt = f"당신은 학교 폭력 및 교권 침해 대응 전문가입니다. 다음 교사의 메모를 바탕으로 두 가지를 작성하세요: {incident_memo}\n1. 육하원칙에 입각한 객관적이고 건조한 공식 사안 보고서 초안\n2. 학부모 상담 시 감정적 충돌을 피하면서 단호하고 정중하게 대응할 수 있는 교사용 전화/면담 스크립트"
@@ -360,7 +463,7 @@ with col_main:
         with col2: stu_level = st.selectbox("성취 수준", ["상 (우수함, 주도적)", "중 (성실함, 무난함)", "하 (노력 요함)"])
         stu_activity = st.text_area("주요 관찰 내용 및 활동 키워드", placeholder="예) 인공지능 윤리를 주제로 한 찬반 토론에서 사회자 역할을 맡아 갈등을 조율함.")
         if st.button("✨ 세특 초안 생성하기", type="primary"):
-            if not st.session_state.get("api_key"): st.error("⚠️ 상단 제목 옆에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.get("api_key"): st.error("⚠️ 우측 상단에 API 키를 먼저 입력해 주세요.")
             elif stu_name and stu_activity:
                 with st.spinner("NEIS 양식에 맞게 문장을 작성 중입니다..."):
                     prompt = f"당신은 고등학교 교사입니다. 학생 '{stu_name}'의 세특을 작성합니다. 수준: {stu_level} / 관찰: {stu_activity}. 명사형 종결어미(~함, ~임)를 사용하고, 500자 내외로 전문적이고 긍정적으로 작성하세요."
@@ -372,7 +475,7 @@ with col_main:
         st.subheader("💌 학급 알림장/가정통신문 자동 생성기")
         msg_context = st.text_area("전달할 핵심 내용 입력", placeholder="예) 내일 체험학습 감. 도시락 꼭 싸오고 8시 반까지 운동장 집합.")
         if st.button("💌 알림장 문구 생성", type="primary"):
-            if not st.session_state.get("api_key"): st.error("⚠️ 상단 제목 옆에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.get("api_key"): st.error("⚠️ 우측 상단에 API 키를 먼저 입력해 주세요.")
             elif msg_context:
                 with st.spinner("정중한 문구로 변환 중입니다..."):
                     prompt = f"다정하고 꼼꼼한 고등학교 담임교사입니다. 학부모님과 학생 단체 문자로 보낼 수 있게 알림장 형태로 다듬어주세요. 내용: {msg_context}."
@@ -528,7 +631,7 @@ with col_main:
                 st.download_button("🖨️ 등록부 인쇄 (손글씨 포함 HTML)", data=html_registry.encode('utf-8'), file_name=f"{selected_training}_등록부.html", mime="text/html", type="primary", use_container_width=True)
 
 # ==========================================
-# [오른쪽 20%] 🌟 깔끔해진 우측 패널
+# [오른쪽 20%] 깔끔해진 우측 정보 패널
 # ==========================================
 with col_info:
     st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
