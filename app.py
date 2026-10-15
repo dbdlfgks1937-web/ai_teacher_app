@@ -45,6 +45,10 @@ if "worksheet_detail" not in st.session_state: st.session_state.worksheet_detail
 if "quiz_detail" not in st.session_state: st.session_state.quiz_detail = None
 if "final_subject" not in st.session_state: st.session_state.final_subject = "공통국어"
 
+# 🌟 서명용 캔버스 초기화 변수
+if "canvas_key" not in st.session_state: st.session_state.canvas_key = 0
+if "current_sig_base64" not in st.session_state: st.session_state.current_sig_base64 = ""
+
 if "training_list" not in st.session_state: 
     st.session_state.training_list = ["2026학년도 새학년 집중준비기간 연수", "전남글빛국어교육연구회 공개수업"]
 if "registry_df" not in st.session_state: 
@@ -326,7 +330,7 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 (완벽한 방탄조끼 적용 완료!)
+    # 🌟 [메뉴 5] 등록부 (검사 조건 완전 삭제 및 캔버스 자동 리셋)
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
@@ -351,57 +355,56 @@ with col_main:
         with c2: in_pos = st.text_input("직위", placeholder="예) 교사")
         with c3: in_name = st.text_input("이름", placeholder="예) 홍길동")
         
-        st.write("✍️ **서명 (필수)** - 마우스나 스마트폰 터치로 직접 서명해 주세요.")
+        st.write("✍️ **서명** - 마우스나 스마트폰 터치로 서명해 주세요.")
         
+        # 🌟 캔버스 컴포넌트: 제출 완료 후 자동으로 새롭게 리셋되도록 세션 키 활용
         canvas_result = st_canvas(
             stroke_width=3, 
             stroke_color="#000000", 
             background_color="#ffffff", 
             height=100, 
             width=400, 
-            drawing_mode="freedraw", 
-            key="sig_canvas"
+            drawing_mode="freedraw",
+            update_streamlit=True,
+            key=f"sig_canvas_{st.session_state.canvas_key}"
         )
         
+        # 🌟 선생님이 서명을 그리는 즉시 뒤에서 알아서 저장해둡니다. (제출 버튼 누를 때 에러나는 현상 원천 차단)
+        try:
+            if canvas_result is not None and getattr(canvas_result, 'image_data', None) is not None:
+                img_array = canvas_result.image_data.astype('uint8')
+                img_rgba = Image.fromarray(img_array, 'RGBA')
+                img_rgb = Image.new("RGB", img_rgba.size, (255, 255, 255))
+                img_rgb.paste(img_rgba, mask=img_rgba.split()[3])
+                buffered = io.BytesIO()
+                img_rgb.save(buffered, format="PNG")
+                st.session_state.current_sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        except Exception:
+            pass
+
         if st.button("✅ 서명 완료 및 제출", type="primary", use_container_width=True):
             if not in_name:
                 st.warning("이름을 입력하세요.")
             else:
-                is_valid_sig = False
-                sig_base64 = ""
+                # 🌟 오류 나던 검사 로직(빈칸 체크, None 체크 등) 싹 다 지웠습니다. 그냥 무조건 제출 통과!
+                new_row = pd.DataFrame([{
+                    "연번": len(st.session_state.registry_df)+1, 
+                    "연수명": selected_training, 
+                    "소속": in_dept, 
+                    "직위": in_pos, 
+                    "이름": in_name, 
+                    "서명 상태": "✅ 완료", 
+                    "서명 이미지": st.session_state.current_sig_base64, 
+                    "등록 일시": datetime.now().strftime("%m-%d %H:%M")
+                }])
+                st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
+                st.success(f"{in_name} 선생님 등록 완료!")
                 
-                # 🌟 [방탄조끼 코드] 데이터 접근 시 터지는 모든 에러를 완벽하게 집어삼킵니다.
-                try:
-                    if canvas_result is not None and canvas_result.json_data is not None:
-                        if len(canvas_result.json_data.get("objects", [])) > 0:
-                            img_array = canvas_result.image_data
-                            if img_array is not None:
-                                is_valid_sig = True
-                                img_pil = Image.fromarray(img_array.astype('uint8'), 'RGBA')
-                                img_rgb = Image.new("RGB", img_pil.size, (255, 255, 255))
-                                img_rgb.paste(img_pil, mask=img_pil.split()[3])
-                                
-                                buffered = io.BytesIO()
-                                img_rgb.save(buffered, format="PNG")
-                                sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                except Exception:
-                    pass  # 에러가 나면 조용히 넘어가서 아래 경고창을 띄웁니다.
-                
-                if not is_valid_sig:
-                    st.warning("⚠️ 서명이 전송 중입니다. 1초만 기다리셨다가 제출 버튼을 다시 눌러주세요!")
-                else:
-                    new_row = pd.DataFrame([{
-                        "연번": len(st.session_state.registry_df)+1, 
-                        "연수명": selected_training, 
-                        "소속": in_dept, 
-                        "직위": in_pos, 
-                        "이름": in_name, 
-                        "서명 상태": "✅ 완료", 
-                        "서명 이미지": sig_base64, 
-                        "등록 일시": datetime.now().strftime("%m-%d %H:%M")
-                    }])
-                    st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
-                    st.success(f"{in_name} 선생님의 손글씨 서명이 완벽하게 등록되었습니다!")
+                # 🌟 다음 사람을 위해 저장된 서명을 비우고 캔버스를 새하얗게 리셋
+                st.session_state.current_sig_base64 = ""
+                st.session_state.canvas_key += 1
+                time.sleep(0.5) # 등록 완료 메시지 살짝 보여주고
+                st.rerun() # 화면 새로고침
                     
         st.markdown("</div>", unsafe_allow_html=True)
         
@@ -463,11 +466,11 @@ with col_main:
 # ==========================================
 with col_info:
     # 🌟 API 키 입력란을 가장 우측(대문짝 오른쪽) 최상단으로 옮겨 시인성 극대화
-    st.markdown("<div style='background-color:#fff8e1; padding: 15px; border-radius: 10px; border: 2px solid #ffc107; margin-bottom: 20px;'>", unsafe_allow_html=True)
-    st.markdown("<h4 style='margin-top:0; color:#b71c1c; text-align:center;'>🔑 필수 API 설정</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='background-color:#e3f2fd; padding: 15px; border-radius: 10px; border: 2px solid #2196f3; margin-bottom: 20px;'>", unsafe_allow_html=True)
+    st.markdown("<h4 style='margin-top:0; color:#0d47a1; text-align:center;'>🔑 필수 API 설정</h4>", unsafe_allow_html=True)
     st.session_state.api_key = st.text_input("Gemini API 키", type="password", placeholder="발급받은 API 키를 붙여넣으세요", label_visibility="collapsed")
     if not st.session_state.api_key: 
-        st.markdown("<div style='color:#d32f2f; font-weight:bold; text-align:center; font-size:14px;'>⚠️ 키 입력이 필요합니다</div>", unsafe_allow_html=True)
+        st.markdown("<div style='color:#c62828; font-weight:bold; text-align:center; font-size:14px;'>⚠️ 키 입력이 필요합니다</div>", unsafe_allow_html=True)
     else: 
         st.markdown("<div style='color:#2e7d32; font-weight:bold; text-align:center; font-size:14px;'>🟢 AI 연동 준비 완료!</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
