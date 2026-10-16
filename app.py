@@ -50,22 +50,12 @@ def save_registry(df):
 # ---------------------------------------------------------
 st.set_page_config(page_title="AI 에듀테크 수퍼 앱", layout="wide", initial_sidebar_state="collapsed")
 
+# 🌟 탭 클릭을 막았던 Sticky(고정) 코드를 완전히 삭제하여 클릭 오류 완벽 해결!
 css_content = """
 <style>
     div[data-baseweb="tab-list"] button p { font-size: 1.15rem !important; font-weight: 700 !important; letter-spacing: -0.5px; }
     .menu-title { font-size: 1.1rem; font-weight: 800; color: #1f4b8e; margin-top: 15px; margin-bottom: 5px; }
-    .block-container { padding-top: 1rem; }
-    header[data-testid="stHeader"] { background-color: transparent; }
-    
-    div[data-testid="stBlockContainer"] > div:nth-child(2) {
-        position: sticky;
-        top: 0px;
-        z-index: 990;
-        background: linear-gradient(180deg, var(--background-color) 85%, transparent 100%);
-        padding-top: 10px;
-        padding-bottom: 20px;
-        margin-top: -10px;
-    }
+    .block-container { padding-top: 2rem; }
 </style>
 """
 
@@ -87,7 +77,7 @@ if "current_page" not in st.session_state: st.session_state.current_page = "과�
 if "extracted_text" not in st.session_state: st.session_state.extracted_text = ""
 if "proposed_sessions" not in st.session_state: st.session_state.proposed_sessions = None
 if "selected_session_detail" not in st.session_state: st.session_state.selected_session_detail = None
-if "slide_detail" not in st.session_state: st.session_state.slide_detail = None # 🌟 슬라이드 데이터
+if "slide_detail" not in st.session_state: st.session_state.slide_detail = None
 if "worksheet_detail" not in st.session_state: st.session_state.worksheet_detail = None
 if "quiz_detail" not in st.session_state: st.session_state.quiz_detail = None
 if "final_subject" not in st.session_state: st.session_state.final_subject = "공통국어"
@@ -100,16 +90,14 @@ if "registry_df" not in st.session_state:
     st.session_state.registry_df = load_registry()
 
 # ==========================================
-# 🌟 상단 헤더 컨테이너 (중앙 정렬 및 고정)
+# 🌟 상단 헤더 컨테이너 (정상적인 깔끔한 레이아웃 복구)
 # ==========================================
-header_container = st.container()
-with header_container:
-    c1, c2, c3 = st.columns([2, 6, 2])
-    with c2:
-        st.markdown("<h2 style='text-align:center; margin:0; padding-top:5px;'>🚀 AI 에듀테크 수퍼 앱 <span style='font-size:1.1rem; opacity:0.7;'>(feat. 개념기반 교육과정)</span></h2>", unsafe_allow_html=True)
-    with c3:
-        st.text_input("API Key", type="password", placeholder="🔑 Gemini API 키 입력", label_visibility="collapsed", key="api_key")
-    st.markdown("<hr style='margin-bottom:0px; margin-top:5px;'>", unsafe_allow_html=True)
+c1, c2, c3 = st.columns([2, 6, 2])
+with c2:
+    st.markdown("<h2 style='text-align:center; margin:0; padding-top:5px;'>🚀 AI 에듀테크 수퍼 앱 <span style='font-size:1.1rem; opacity:0.7;'>(feat. 개념기반 교육과정)</span></h2>", unsafe_allow_html=True)
+with c3:
+    st.text_input("API Key", type="password", placeholder="🔑 Gemini API 키 입력", label_visibility="collapsed", key="api_key")
+st.markdown("<hr style='margin-bottom:10px; margin-top:5px;'>", unsafe_allow_html=True)
 
 # ==========================================
 # 🌟 [AI 호출 함수] 
@@ -156,27 +144,26 @@ with col_menu:
 
 with col_main:
     # --------------------------------------------------------------------------------
-    # [메뉴 1] 과정안 생성기 (7단계 탭 순연 적용)
+    # [메뉴 1] 과정안 생성기 (7단계 탭 적용 완료)
     # --------------------------------------------------------------------------------
     if st.session_state.current_page == "과정안 생성":
         st.subheader("📝 개념기반 공개수업 마스터플랜 생성기")
         
-        # 🌟 순연된 7개 탭 구조
         tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
             "⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "🖥️ 4. 슬라이드 생성", "📝 5. 활동지 생성", "❓ 6. 평가 출제", "🖨️ 7. 인쇄/추출"
         ])
         
         with tab1:
             st.markdown("#### ⚙️ 수업 기본 정보 세팅")
-            c1, c2 = st.columns(2)
-            with c1:
+            c1_set, c2_set = st.columns(2)
+            with c1_set:
                 subj_list = ["공통국어", "윤리와 사상", "생활과 윤리", "➕ 직접 입력 (새 과목 추가)"]
                 sel_subj = st.selectbox("📚 담당 과목", subj_list)
                 if sel_subj == "➕ 직접 입력 (새 과목 추가)": st.session_state.final_subject = st.text_input("✨ 새 과목명 입력")
                 else: st.session_state.final_subject = sel_subj
                 st.text_input("🏫 소속 학교명", placeholder="예) 광영고등학교", key="school_name")
                 st.text_input("📅 수업 일시", placeholder="예) 2026. 10. 14. (수) 14:00", key="class_date")
-            with c2:
+            with c2_set:
                 st.text_input("👨‍🏫 지도 교사", placeholder="예) 유일한", key="teacher_name")
                 st.text_input("👥 수업 대상", placeholder="예) 1학년 6반 학생", key="target_students")
                 st.text_input("🏫 수업 장소", placeholder="예) 1학년 6반 교실", key="class_location")
@@ -228,7 +215,6 @@ with col_main:
                             st.success("개념기반 지도안 완성! 4단계(슬라이드 생성) 탭으로 이동하세요.")
                         except Exception as e: st.error(str(e))
 
-        # 🌟 4단계: AI 슬라이드 생성 탭
         with tab4:
             st.markdown("#### 🖥️ AI 수업용 슬라이드 생성")
             if st.session_state.selected_session_detail:
@@ -290,7 +276,7 @@ with col_main:
         with tab6:
             st.markdown("#### ❓ 다유형 형성평가지 출제")
             if st.session_state.selected_session_detail:
-                if st.button("❓ 형성평가 출제 시작", type="primary"):
+                if st.button("❓ 형성평 출제 시작", type="primary"):
                     with st.spinner("O/X, 초성, 어휘, 4지선다 등 다양한 유형의 문제를 출제하고 있습니다..."):
                         prompt4 = f"""당신은 {st.session_state.final_subject} 평가 전문가입니다. '{st.session_state.selected_session_detail['title']}' 수업 내용에 대해 아래 JSON 구조로 출제하세요:
 {{
@@ -367,7 +353,7 @@ with col_main:
         with col2: event_date = st.text_input("행사 일시 및 장소", placeholder="예) 6월 10일 (수), 대강당")
         event_purpose = st.text_area("행사 목적 및 주요 식순(키워드)", placeholder="예) 개회식, 교장선생님 인사말, 학생 서포터즈 발대식, 부스 투어")
         if st.button("🎉 공식 기안문 & 대본 생성하기", type="primary"):
-            if not st.session_state.get("api_key"): st.error("⚠️ 상단 우측에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.get("api_key"): st.error("⚠️ 상단에 API 키를 먼저 입력해 주세요.")
             elif event_name and event_purpose:
                 with st.spinner("AI가 교무 행정 양식에 맞춰 완벽한 문서를 기안하고 있습니다..."):
                     prompt = f"당신은 고등학교 부장교사입니다. 행사명: {event_name}, 일시/장소: {event_date}, 주요내용: {event_purpose}. \n두 가지를 작성하세요.\n1. 내부 결재용 기안문 초안 (목적, 방침, 세부 일정 포함)\n2. 행사 당일 사회자(진행자)의 매끄러운 오프닝 및 진행 시나리오 대본"
@@ -382,7 +368,7 @@ with col_main:
         st.subheader("🛡️ 교권 보호 사안 보고서 & 상담 매뉴얼 생성기")
         incident_memo = st.text_area("발생한 사안이나 민원 내용을 자유롭게 적어주세요.", placeholder="예) 수업 중에 A학생이 엎드려 자길래 깨웠더니 소리를 지르고 욕설을 함.", height=150)
         if st.button("🛡️ 객관적 보고서 및 대응 스크립트 생성", type="primary"):
-            if not st.session_state.get("api_key"): st.error("⚠️ 상단 우측에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.get("api_key"): st.error("⚠️ 상단에 API 키를 먼저 입력해 주세요.")
             elif incident_memo:
                 with st.spinner("AI가 감정을 배제하고 공식 보고서와 정중한 대응 매뉴얼을 작성 중입니다..."):
                     prompt = f"당신은 학교 폭력 및 교권 침해 대응 전문가입니다. 다음 교사의 메모를 바탕으로 두 가지를 작성하세요: {incident_memo}\n1. 육하원칙에 입각한 객관적이고 건조한 공식 사안 보고서 초안\n2. 학부모 상담 시 감정적 충돌을 피하면서 단호하고 정중하게 대응할 수 있는 교사용 전화/면담 스크립트"
@@ -400,7 +386,7 @@ with col_main:
         with col2: stu_level = st.selectbox("성취 수준", ["상 (우수함, 주도적)", "중 (성실함, 무난함)", "하 (노력 요함)"])
         stu_activity = st.text_area("주요 관찰 내용 및 활동 키워드", placeholder="예) 인공지능 윤리를 주제로 한 찬반 토론에서 사회자 역할을 맡아 갈등을 조율함.")
         if st.button("✨ 세특 초안 생성하기", type="primary"):
-            if not st.session_state.get("api_key"): st.error("⚠️ 상단 우측에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.get("api_key"): st.error("⚠️ 상단에 API 키를 먼저 입력해 주세요.")
             elif stu_name and stu_activity:
                 with st.spinner("NEIS 양식에 맞게 문장을 작성 중입니다..."):
                     prompt = f"당신은 고등학교 교사입니다. 학생 '{stu_name}'의 세특을 작성합니다. 수준: {stu_level} / 관찰: {stu_activity}. 명사형 종결어미(~함, ~임)를 사용하고, 500자 내외로 전문적이고 긍정적으로 작성하세요."
@@ -412,7 +398,7 @@ with col_main:
         st.subheader("💌 학급 알림장/가정통신문 자동 생성기")
         msg_context = st.text_area("전달할 핵심 내용 입력", placeholder="예) 내일 체험학습 감. 도시락 꼭 싸오고 8시 반까지 운동장 집합.")
         if st.button("💌 알림장 문구 생성", type="primary"):
-            if not st.session_state.get("api_key"): st.error("⚠️ 상단 우측에 API 키를 먼저 입력해 주세요.")
+            if not st.session_state.get("api_key"): st.error("⚠️ 상단에 API 키를 먼저 입력해 주세요.")
             elif msg_context:
                 with st.spinner("정중한 문구로 변환 중입니다..."):
                     prompt = f"다정하고 꼼꼼한 고등학교 담임교사입니다. 학부모님과 학생 단체 문자로 보낼 수 있게 알림장 형태로 다듬어주세요. 내용: {msg_context}."
@@ -421,7 +407,7 @@ with col_main:
                     except Exception as e: st.error(str(e))
 
     # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부
+    # 🌟 [메뉴 5] 등록부 
     # --------------------------------------------------------------------------------
     elif st.session_state.current_page == "등록부":
         st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
