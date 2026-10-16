@@ -1,578 +1,1096 @@
-import streamlit as st
-import pdfplumber
-import json
-import io
-import os
-import time
-import base64
-import numpy as np
-import pandas as pd
-from datetime import datetime
-from PIL import Image
-from streamlit_drawable_canvas import st_canvas
-from google import genai
-
-# ---------------------------------------------------------
-# 🌟 [미니 데이터베이스] 새로고침해도 날아가지 않게 로컬 파일로 영구 보관
-# ---------------------------------------------------------
-TRAINING_FILE = "training_data.json"
-REGISTRY_FILE = "registry.csv"
-
-def load_training_data():
-    if os.path.exists(TRAINING_FILE):
-        with open(TRAINING_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    else:
-        default_data = {
-            "2026학년도 새학년 집중준비기간 연수": {"date": "2026. 02. 11. 14:00", "loc": "본관 대강당"},
-            "전남글빛국어교육연구회 공개수업": {"date": "2026. 10. 14. 14:00", "loc": "1학년 6반 교실"}
-        }
-        save_training_data(default_data)
-        return default_data
-
-def save_training_data(data):
-    with open(TRAINING_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-def load_registry():
-    if os.path.exists(REGISTRY_FILE):
-        return pd.read_csv(REGISTRY_FILE)
-    else:
-        df = pd.DataFrame(columns=["연번", "연수명", "일시", "장소", "소속", "직위", "이름", "서명 상태", "서명 이미지", "등록 일시"])
-        save_registry(df)
-        return df
-
-def save_registry(df):
-    df.to_csv(REGISTRY_FILE, index=False, encoding="utf-8-sig")
-
-# ---------------------------------------------------------
-# 1. 화면 기본 설정
-# ---------------------------------------------------------
-st.set_page_config(page_title="AI 에듀테크 수퍼 앱", layout="wide", initial_sidebar_state="collapsed")
-
-# 🌟 탭 클릭을 막았던 Sticky(고정) 코드를 완전히 삭제하여 클릭 오류 완벽 해결!
-css_content = """
-<style>
-    div[data-baseweb="tab-list"] button p { font-size: 1.15rem !important; font-weight: 700 !important; letter-spacing: -0.5px; }
-    .menu-title { font-size: 1.1rem; font-weight: 800; color: #1f4b8e; margin-top: 15px; margin-bottom: 5px; }
-    .block-container { padding-top: 2rem; }
-</style>
-"""
-
-def load_css(file_name):
-    try:
-        with open(file_name, "r", encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        return ""
-
-external_css = load_css("style.css")
-if external_css:
-    css_content += f"<style>{external_css}</style>"
-
-st.markdown(css_content, unsafe_allow_html=True)
-
-# 세션 상태 초기화
-if "current_page" not in st.session_state: st.session_state.current_page = "과정안 생성"
-if "extracted_text" not in st.session_state: st.session_state.extracted_text = ""
-if "proposed_sessions" not in st.session_state: st.session_state.proposed_sessions = None
-if "selected_session_detail" not in st.session_state: st.session_state.selected_session_detail = None
-if "slide_detail" not in st.session_state: st.session_state.slide_detail = None
-if "worksheet_detail" not in st.session_state: st.session_state.worksheet_detail = None
-if "quiz_detail" not in st.session_state: st.session_state.quiz_detail = None
-if "final_subject" not in st.session_state: st.session_state.final_subject = "공통국어"
-if "canvas_key" not in st.session_state: st.session_state.canvas_key = 0
-if "api_key" not in st.session_state: st.session_state.api_key = ""
-
-if "training_data" not in st.session_state: 
-    st.session_state.training_data = load_training_data()
-if "registry_df" not in st.session_state: 
-    st.session_state.registry_df = load_registry()
-
-# ==========================================
-# 🌟 상단 헤더 컨테이너 (정상적인 깔끔한 레이아웃 복구)
-# ==========================================
-c1, c2, c3 = st.columns([2, 6, 2])
-with c2:
-    st.markdown("<h2 style='text-align:center; margin:0; padding-top:5px;'>🚀 AI 에듀테크 수퍼 앱 <span style='font-size:1.1rem; opacity:0.7;'>(feat. 개념기반 교육과정)</span></h2>", unsafe_allow_html=True)
-with c3:
-    st.text_input("API Key", type="password", placeholder="🔑 Gemini API 키 입력", label_visibility="collapsed", key="api_key")
-st.markdown("<hr style='margin-bottom:10px; margin-top:5px;'>", unsafe_allow_html=True)
-
-# ==========================================
-# 🌟 [AI 호출 함수] 
-# ==========================================
-def call_gemini_robust(api_key, prompt, max_retries=3):
-    client = genai.Client(api_key=api_key)
-    for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(model="gemini-3.8-flash", contents=prompt)
-            return response.text
-        except Exception as e:
-            err_msg = str(e)
-            if "503" in err_msg or "UNAVAILABLE" in err_msg:
-                if attempt < max_retries - 1:
-                    time.sleep(2)
-                    continue
-            raise Exception(f"AI 통신 오류: {err_msg}")
-
-# ---------------------------------------------------------
-# 3. 화면 3분할 (2:6:2 비율)
-# ---------------------------------------------------------
-col_menu, col_main, col_info = st.columns([2, 6, 2], gap="large")
-
-with col_menu:
-    st.subheader("📌 업무 메뉴")
-    def nav_button(label, page_name):
-        if st.button(label, type="primary" if st.session_state.current_page == page_name else "secondary", use_container_width=True):
-            st.session_state.current_page = page_name
-            st.rerun()
-            
-    st.markdown("<div class='menu-title'>📚 수업 지원</div>", unsafe_allow_html=True)
-    nav_button("📝 과정안/학습지 출제", "과정안 생성")
-    
-    st.markdown("<div class='menu-title'>📝 평가/기록 지원</div>", unsafe_allow_html=True)
-    nav_button("💡 학생 세특 초안", "세특 초안")
-    
-    st.markdown("<div class='menu-title'>🛡️ 교권/상담 지원</div>", unsafe_allow_html=True)
-    nav_button("🛡️ 사안/민원 쉴드", "사안 보고")
-    
-    st.markdown("<div class='menu-title'>🏫 행정/학급 운영</div>", unsafe_allow_html=True)
-    nav_button("🎉 행사 기획 마스터", "행사 기획")
-    nav_button("💌 학급 알림장/문자", "알림장")
-    nav_button("📋 온라인 등록부", "등록부")
-
-with col_main:
-    # --------------------------------------------------------------------------------
-    # [메뉴 1] 과정안 생성기 (7단계 탭 적용 완료)
-    # --------------------------------------------------------------------------------
-    if st.session_state.current_page == "과정안 생성":
-        st.subheader("📝 개념기반 공개수업 마스터플랜 생성기")
-        
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-            "⚙️ 1. 기본 설정", "📊 2. 단원 분석", "🎯 3. 지도안 생성", "🖥️ 4. 슬라이드 생성", "📝 5. 활동지 생성", "❓ 6. 평가 출제", "🖨️ 7. 인쇄/추출"
-        ])
-        
-        with tab1:
-            st.markdown("#### ⚙️ 수업 기본 정보 세팅")
-            c1_set, c2_set = st.columns(2)
-            with c1_set:
-                subj_list = ["공통국어", "윤리와 사상", "생활과 윤리", "➕ 직접 입력 (새 과목 추가)"]
-                sel_subj = st.selectbox("📚 담당 과목", subj_list)
-                if sel_subj == "➕ 직접 입력 (새 과목 추가)": st.session_state.final_subject = st.text_input("✨ 새 과목명 입력")
-                else: st.session_state.final_subject = sel_subj
-                st.text_input("🏫 소속 학교명", placeholder="예) 광영고등학교", key="school_name")
-                st.text_input("📅 수업 일시", placeholder="예) 2026. 10. 14. (수) 14:00", key="class_date")
-            with c2_set:
-                st.text_input("👨‍🏫 지도 교사", placeholder="예) 유일한", key="teacher_name")
-                st.text_input("👥 수업 대상", placeholder="예) 1학년 6반 학생", key="target_students")
-                st.text_input("🏫 수업 장소", placeholder="예) 1학년 6반 교실", key="class_location")
-            st.write("---")
-            st.markdown("#### 📄 교과서 PDF 업로드")
-            uploaded_file = st.file_uploader("단원 분석을 위한 PDF 파일을 업로드해 주세요.", type=["pdf"])
-                
-        with tab2:
-            st.markdown("#### 📊 단원 구조 분석")
-            if uploaded_file and st.session_state.get("api_key"):
-                if st.button("🚀 AI 단원 분석 시작", type="primary"):
-                    with st.spinner("AI가 교과서를 분석하여 개념기반 흐름을 추출하고 있습니다..."):
-                        text_data = ""
-                        with pdfplumber.open(uploaded_file) as pdf:
-                            for page in pdf.pages:
-                                ext = page.extract_text()
-                                if ext: text_data += ext + "\n"
-                        st.session_state.extracted_text = text_data
-                        prompt1 = f"당신은 개념기반 교육과정(CBI)에 정통한 고등학교 {st.session_state.final_subject} 수석 교사입니다. 텍스트를 분석해 개념 탐구에 적합한 최적 총 차시를 설계하세요. JSON 배열로 답변 (키: session, type, title, desc). [내용] {text_data}"
-                        try:
-                            res1 = call_gemini_robust(st.session_state.api_key, prompt1)
-                            st.session_state.proposed_sessions = json.loads(res1.replace("```json", "").replace("```", "").strip())
-                            st.success("단원 분석 완료! 3단계 탭으로 이동하세요.")
-                        except Exception as e: st.error(str(e))
-            elif not st.session_state.get("api_key"): st.error("⚠️ 상단 제목 우측에 API 키를 먼저 입력해 주세요.")
-            else: st.warning("1단계 탭에서 교과서 PDF를 업로드해 주세요.")
-                
-        with tab3:
-            st.markdown("#### 🎯 개념기반 공개수업 지도안 생성")
-            if st.session_state.proposed_sessions:
-                options = {f"{s['session']}차시 - {s['title']}": s for s in st.session_state.proposed_sessions}
-                sel_opt = st.radio("과정안을 생성할 차시를 선택하세요:", list(options.keys()))
-                if st.button("📝 개념기반 공개수업 지도안 생성", type="primary"):
-                    chosen = options[sel_opt]
-                    with st.spinner("학생 주도형 탐구 수업을 설계 중입니다..."):
-                        prompt2 = f"""당신은 {st.session_state.final_subject} 수석 교사입니다. 주제: {chosen['title']}. 
-학생들이 '핵심 아이디어'에 도달할 수 있는 탐구 수업을 설계해 주세요. 아래 JSON 구조로 답변하세요:
-{{
-  "overview": "수업 개요", "macro": "거시 개념", "micro": "미시 개념", "objective": "본시 학습 목표", "big_idea": "핵심 아이디어 / 일반화",
-  "intro_act": "도입 활동", "intro_time": "10분", "intro_note": "유의점",
-  "dev_act": "전개 활동 (구체적 교사-학생 발문 상호작용 상세화)", "dev_time": "30분", "dev_note": "모둠 활동 등",
-  "conc_act": "정리 활동", "conc_time": "10분", "conc_note": "형성평가 및 성찰"
-}}
-[내용] {st.session_state.extracted_text}"""
-                        try:
-                            res2 = call_gemini_robust(st.session_state.api_key, prompt2)
-                            st.session_state.selected_session_detail = json.loads(res2.replace("```json", "").replace("```", "").strip())
-                            st.session_state.selected_session_detail.update({'session': chosen['session'], 'title': chosen['title']})
-                            st.success("개념기반 지도안 완성! 4단계(슬라이드 생성) 탭으로 이동하세요.")
-                        except Exception as e: st.error(str(e))
-
-        with tab4:
-            st.markdown("#### 🖥️ AI 수업용 슬라이드 생성")
-            if st.session_state.selected_session_detail:
-                if st.button("🪄 수업용 슬라이드 텍스트 자동 생성", type="primary"):
-                    with st.spinner("교과서 내용과 지도안을 바탕으로 프레젠테이션 슬라이드를 구성 중입니다..."):
-                        d = st.session_state.selected_session_detail
-                        prompt_slide = f"""당신은 {st.session_state.final_subject} 수석 교사입니다. 다음 수업 정보를 바탕으로 칠판이나 프로젝터에 띄울 수업용 슬라이드 3장 분량을 작성해 주세요.
-주제: {d.get('title','')}
-학습목표: {d.get('objective','')}
-핵심아이디어: {d.get('big_idea','')}
-
-아래 JSON 구조로 답변하세요:
-{{
-  "slide1_title": "1장 제목 (도입 및 동기유발)", "slide1_bullets": ["핵심 포인트 1", "핵심 포인트 2"],
-  "slide2_title": "2장 제목 (본문 탐구 및 개념)", "slide2_bullets": ["개념 설명 1", "개념 설명 2", "탐구 질문"],
-  "slide3_title": "3장 제목 (정리 및 성찰)", "slide3_bullets": ["일반화 내용", "형성평가 안내"]
-}}"""
-                        try:
-                            res_slide = call_gemini_robust(st.session_state.api_key, prompt_slide)
-                            st.session_state.slide_detail = json.loads(res_slide.replace("```json", "").replace("```", "").strip())
-                            st.success("슬라이드 생성 완료! 5단계(활동지 생성) 탭으로 이동하세요.")
-                        except Exception as e: st.error(str(e))
-                
-                if st.session_state.slide_detail:
-                    s = st.session_state.slide_detail
-                    st.markdown("---")
-                    col_s1, col_s2, col_s3 = st.columns(3)
-                    with col_s1:
-                        st.markdown(f"**[Slide 1] {s.get('slide1_title','')}**")
-                        for b in s.get('slide1_bullets', []): st.write(f"• {b}")
-                    with col_s2:
-                        st.markdown(f"**[Slide 2] {s.get('slide2_title','')}**")
-                        for b in s.get('slide2_bullets', []): st.write(f"• {b}")
-                    with col_s3:
-                        st.markdown(f"**[Slide 3] {s.get('slide3_title','')}**")
-                        for b in s.get('slide3_bullets', []): st.write(f"• {b}")
-            else:
-                st.warning("먼저 3단계 탭에서 지도안을 생성해 주세요.")
-
-        with tab5:
-            st.markdown("#### 📝 A4 맞춤형 학생 활동지 생성")
-            if st.session_state.selected_session_detail:
-                if st.button("📝 개념기반 학생 활동지 설계", type="primary"):
-                    with st.spinner("탐구 질문과 논리 구조가 포함된 학생 활동지를 디자인 중입니다..."):
-                        prompt3 = f"""당신은 {st.session_state.final_subject} 수석 교사입니다. 앞서 설계한 '{st.session_state.selected_session_detail['title']}' 수업의 학생용 활동지를 아래 JSON 구조로 답변하세요:
-{{
-  "title": "활동지 제목",
-  "act1_title": "[활동 1] 지식 탐구 및 분석", "act1_desc": "표로 정리할 내용 안내",
-  "act2_title": "[활동 2] 생각을 여는 탐구 질문 만들기", "act2_desc": "질문 예시 안내",
-  "act3_title": "[활동 3] 나만의 관점 세우기", "act3_desc": "3단 마법의 문장 틀 포함",
-  "wrap_up": "[마무리] 상호작용 및 성찰 체크리스트"
-}}"""
-                        try:
-                            res3 = call_gemini_robust(st.session_state.api_key, prompt3)
-                            st.session_state.worksheet_detail = json.loads(res3.replace("```json", "").replace("```", "").strip())
-                            st.success("활동지 완성! 6단계 탭으로 이동하세요.")
-                        except Exception as e: st.error(str(e))
-
-        with tab6:
-            st.markdown("#### ❓ 다유형 형성평가지 출제")
-            if st.session_state.selected_session_detail:
-                if st.button("❓ 형성평 출제 시작", type="primary"):
-                    with st.spinner("O/X, 초성, 어휘, 4지선다 등 다양한 유형의 문제를 출제하고 있습니다..."):
-                        prompt4 = f"""당신은 {st.session_state.final_subject} 평가 전문가입니다. '{st.session_state.selected_session_detail['title']}' 수업 내용에 대해 아래 JSON 구조로 출제하세요:
-{{
-  "title": "형성평가지 제목",
-  "ox_quiz": [ {{"q": "질문 내용", "a": "O 또는 X", "exp": "해설"}} ],
-  "initial_quiz": [ {{"q": "질문 내용 (초성 제시)", "a": "정답단어", "exp": "해설"}} ],
-  "vocab_quiz": [ {{"q": "단답형 질문 내용", "a": "정답단어", "exp": "해설"}} ],
-  "mcq": [ {{"q": "질문 내용", "options": ["보기1", "보기2", "보기3", "보기4"], "a": "정답번호(1~4)", "exp": "해설"}} ]
-}}
-목표: {st.session_state.selected_session_detail.get('objective','')}
-"""
-                        try:
-                            res4 = call_gemini_robust(st.session_state.api_key, prompt4)
-                            st.session_state.quiz_detail = json.loads(res4.replace("```json", "").replace("```", "").strip())
-                            st.success("형성평가 출제 완료! 7단계(인쇄/추출) 탭으로 이동하세요.")
-                        except Exception as e: st.error(str(e))
-
-        with tab7:
-            st.markdown("#### 🖨️ 생성 파일 인쇄 및 엑셀 추출")
-            c_a, c_b, c_c, c_d = st.columns(4)
-            sub = st.session_state.final_subject
-            s_name = st.session_state.get('school_name', '')
-            teacher_display = f"[{s_name}] {st.session_state.get('teacher_name', '')}".strip() if s_name else st.session_state.get('teacher_name', '')
-            info_line = f"[{st.session_state.get('target_students', '')}] ___번 이름: _____________"
-            
-            if st.session_state.selected_session_detail:
-                d = st.session_state.selected_session_detail
-                html_plan = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>공개수업 지도안</title><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; line-height: 1.5; }} table {{ width: 100%; border-collapse: collapse; margin-bottom: 25px; }} th, td {{ border: 1px solid #000; padding: 8px; }} th {{ background-color: #f2f2f2; text-align: center; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #1a73e8; color: white; text-align: center; cursor: pointer; border-radius: 5px; border:none; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 지도안 인쇄하기</button><h1 style="text-align:center;">{sub}과 교수·학습 과정안</h1><table><tr><th>일 시</th><td>{st.session_state.get('class_date','')}</td><th>장 소</th><td>{st.session_state.get('class_location','')}</td></tr><tr><th>대 상</th><td>{st.session_state.get('target_students','')}</td><th>지도 교사</th><td>{teacher_display}</td></tr></table><h3>| 1. 수업 개요 및 의도</h3><p>{d.get('overview','')}</p><h3>| 2. CBI 목표</h3><ul><li><b>거시/미시:</b> {d.get('macro','')} / {d.get('micro','')}</li><li><b>목표:</b> {d.get('objective','')}</li><li><b>일반화:</b> {d.get('big_idea','')}</li></ul><h3>| 3. 전개</h3><table><tr><th width="10%">단계</th><th width="10%">시량</th><th width="60%">교수·학습 활동</th><th width="20%">유의점</th></tr><tr><td align="center">도 입</td><td align="center">{d.get('intro_time','')}</td><td>{d.get('intro_act','').replace(chr(10), '<br>')}</td><td>{d.get('intro_note','').replace(chr(10), '<br>')}</td></tr><tr><td align="center">전 개</td><td align="center">{d.get('dev_time','')}</td><td>{d.get('dev_act','').replace(chr(10), '<br>')}</td><td>{d.get('dev_note','').replace(chr(10), '<br>')}</td></tr><tr><td align="center">정 리</td><td align="center">{d.get('conc_time','')}</td><td>{d.get('conc_act','').replace(chr(10), '<br>')}</td><td>{d.get('conc_note','').replace(chr(10), '<br>')}</td></tr></table></body></html>"""
-                with c_a: st.download_button("📥 1. 지도안", data=html_plan.encode('utf-8'), file_name="지도안.html", mime="text/html", type="primary", use_container_width=True)
-
-            if st.session_state.worksheet_detail:
-                w = st.session_state.worksheet_detail
-                d = st.session_state.selected_session_detail
-                html_work = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; }} .box {{ border: 1px dashed #333; padding: 15px; margin-bottom: 10px; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #2b8a3e; color: white; cursor: pointer; border-radius: 5px; text-align:center; border:none; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 활동지 인쇄하기</button><div style="border: 2px solid #000; padding: 15px; border-radius: 8px;"><h1 style="text-align:center; margin:0;">[탐구 활동지] {w.get('title','')}</h1><div style="text-align:right; font-weight:bold; margin-top:10px;">{info_line}</div><div><b>[거시/미시]</b> {d.get('macro','')} / {d.get('micro','')}</div><div><b>[목표]</b> {d.get('objective','')}</div><div><b>[핵심 아이디어]</b> {d.get('big_idea','')}</div></div><h3>{w.get('act1_title','')}</h3><div class="box">{w.get('act1_desc','').replace(chr(10), '<br>')}</div><h3>{w.get('act2_title','')}</h3><div class="box"><b>▶ 나의 질문: </b></div><h3>{w.get('act3_title','')}</h3><div class="box" style="min-height:100px;"></div><h3>{w.get('wrap_up','[마무리]')}</h3></body></html>"""
-                with c_b: st.download_button("📥 2. 활동지", data=html_work.encode('utf-8'), file_name="활동지.html", mime="text/html", type="primary", use_container_width=True)
-
-            if st.session_state.quiz_detail:
-                q = st.session_state.quiz_detail
-                ox_html = "".join([f"<li>{item['q']} ( O , X )</li>" for item in q.get('ox_quiz', [])])
-                init_html = "".join([f"<li>{item['q']} ( 정답: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; )</li>" for item in q.get('initial_quiz', [])])
-                vocab_html = "".join([f"<li>{item['q']}<br>( 정답: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; )</li>" for item in q.get('vocab_quiz', [])])
-                mcq_html = ""
-                for item in q.get('mcq', []):
-                    opt_str = "<ol>" + "".join([f"<li>{opt}</li>" for item_opt in item.get('options', [])]) + "</ol>"
-                    mcq_html += f"<li>{item['q']}{opt_str}</li>"
-                ans_html = "<ul>"
-                for item in q.get('ox_quiz', []): ans_html += f"<li><b>[O/X]</b> 정답: {item['a']} - {item.get('exp','')}</li>"
-                for item in q.get('initial_quiz', []): ans_html += f"<li><b>[초성]</b> 정답: {item['a']} - {item.get('exp','')}</li>"
-                for item in q.get('vocab_quiz', []): ans_html += f"<li><b>[어휘]</b> 정답: {item['a']} - {item.get('exp','')}</li>"
-                for item in q.get('mcq', []): ans_html += f"<li><b>[객관식]</b> 정답: {item['a']} - {item.get('exp','')}</li>"
-                ans_html += "</ul>"
-
-                html_quiz = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>@page {{ size: A4; margin: 20mm; }} body {{ font-family: 'Malgun Gothic', sans-serif; }} .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #f59f00; color: white; text-align: center; cursor: pointer; border-radius: 5px; border:none; }} .page-break {{ page-break-before: always; margin-top: 40px; padding-top: 20px; border-top: 2px dashed #000; }} @media print {{ .print-btn {{ display: none; }} }}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 평가 및 해설지 인쇄</button><div style="border:2px solid #000; padding:15px; text-align:center; border-radius:8px;"><h1 style="margin:0;">[형성평가] {q.get('title', '')}</h1><div style="text-align:right; font-weight:bold; margin-top:10px;">{info_line}</div></div><h3>🎯 O/X 퀴즈</h3><ul>{ox_html}</ul><h3>🎯 초성 퀴즈</h3><ul>{init_html}</ul><h3>🎯 어휘 퀴즈</h3><ul>{vocab_html}</ul><h3>🎯 객관식 퀴즈</h3><ol>{mcq_html}</ol>
-                <div class="page-break"><h2 style="color: #e03131;">[교사용] 정답 및 해설</h2>{ans_html}</div></body></html>"""
-                with c_c: st.download_button("📥 3. 평가/해설", data=html_quiz.encode('utf-8'), file_name="형성평가.html", mime="text/html", type="primary", use_container_width=True)
-
-                csv_rows = []
-                for item in q.get('ox_quiz', []): csv_rows.append({"유형": "OX", "문제": item['q'], "정답": item['a'], "보기1": "O", "보기2": "X", "보기3": "", "보기4": "", "해설": item.get('exp','')})
-                for item in q.get('initial_quiz', []): csv_rows.append({"유형": "단답형", "문제": item['q'], "정답": item['a'], "보기1": "", "보기2": "", "보기3": "", "보기4": "", "해설": item.get('exp','')})
-                for item in q.get('vocab_quiz', []): csv_rows.append({"유형": "단답형", "문제": item['q'], "정답": item['a'], "보기1": "", "보기2": "", "보기3": "", "보기4": "", "해설": item.get('exp','')})
-                for item in q.get('mcq', []):
-                    opts = item.get('options', ["","","",""])
-                    csv_rows.append({"유형": "객관식", "문제": item['q'], "정답": item['a'], "보기1": opts[0] if len(opts)>0 else "", "보기2": opts[1] if len(opts)>1 else "", "보기3": opts[2] if len(opts)>2 else "", "보기4": opts[3] if len(opts)>3 else "", "해설": item.get('exp','')})
-                df_quiz = pd.DataFrame(csv_rows)
-                with c_d: st.download_button("📥 4. 퀴즈앤(CSV)", data=df_quiz.to_csv(index=False, encoding='utf-8-sig'), file_name="퀴즈앤_일괄등록.csv", mime="text/csv", type="secondary", use_container_width=True)
-
-    # --------------------------------------------------------------------------------
-    # [메뉴 2, 3, 4] 행사, 사안, 세특, 알림장
-    # --------------------------------------------------------------------------------
-    elif st.session_state.current_page == "행사 기획":
-        st.subheader("🎉 대형 행사 시나리오 & 기안문 자동 생성기")
-        col1, col2 = st.columns(2)
-        with col1: event_name = st.text_input("행사명", placeholder="예) 2026학년도 교실로 찾아가는 교육과정 박람회")
-        with col2: event_date = st.text_input("행사 일시 및 장소", placeholder="예) 6월 10일 (수), 대강당")
-        event_purpose = st.text_area("행사 목적 및 주요 식순(키워드)", placeholder="예) 개회식, 교장선생님 인사말, 학생 서포터즈 발대식, 부스 투어")
-        if st.button("🎉 공식 기안문 & 대본 생성하기", type="primary"):
-            if not st.session_state.get("api_key"): st.error("⚠️ 상단에 API 키를 먼저 입력해 주세요.")
-            elif event_name and event_purpose:
-                with st.spinner("AI가 교무 행정 양식에 맞춰 완벽한 문서를 기안하고 있습니다..."):
-                    prompt = f"당신은 고등학교 부장교사입니다. 행사명: {event_name}, 일시/장소: {event_date}, 주요내용: {event_purpose}. \n두 가지를 작성하세요.\n1. 내부 결재용 기안문 초안 (목적, 방침, 세부 일정 포함)\n2. 행사 당일 사회자(진행자)의 매끄러운 오프닝 및 진행 시나리오 대본"
-                    try:
-                        res_text = call_gemini_robust(st.session_state.api_key, prompt)
-                        st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
-                        st.markdown(res_text)
-                        st.markdown("</div>", unsafe_allow_html=True)
-                    except Exception as e: st.error(str(e))
-
-    elif st.session_state.current_page == "사안 보고":
-        st.subheader("🛡️ 교권 보호 사안 보고서 & 상담 매뉴얼 생성기")
-        incident_memo = st.text_area("발생한 사안이나 민원 내용을 자유롭게 적어주세요.", placeholder="예) 수업 중에 A학생이 엎드려 자길래 깨웠더니 소리를 지르고 욕설을 함.", height=150)
-        if st.button("🛡️ 객관적 보고서 및 대응 스크립트 생성", type="primary"):
-            if not st.session_state.get("api_key"): st.error("⚠️ 상단에 API 키를 먼저 입력해 주세요.")
-            elif incident_memo:
-                with st.spinner("AI가 감정을 배제하고 공식 보고서와 정중한 대응 매뉴얼을 작성 중입니다..."):
-                    prompt = f"당신은 학교 폭력 및 교권 침해 대응 전문가입니다. 다음 교사의 메모를 바탕으로 두 가지를 작성하세요: {incident_memo}\n1. 육하원칙에 입각한 객관적이고 건조한 공식 사안 보고서 초안\n2. 학부모 상담 시 감정적 충돌을 피하면서 단호하고 정중하게 대응할 수 있는 교사용 전화/면담 스크립트"
-                    try:
-                        res_text = call_gemini_robust(st.session_state.api_key, prompt)
-                        st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
-                        st.markdown(res_text)
-                        st.markdown("</div>", unsafe_allow_html=True)
-                    except Exception as e: st.error(str(e))
-
-    elif st.session_state.current_page == "세특 초안":
-        st.subheader("💡 학생 세특(관찰) 초안 생성기")
-        col1, col2 = st.columns(2)
-        with col1: stu_name = st.text_input("학생 이름")
-        with col2: stu_level = st.selectbox("성취 수준", ["상 (우수함, 주도적)", "중 (성실함, 무난함)", "하 (노력 요함)"])
-        stu_activity = st.text_area("주요 관찰 내용 및 활동 키워드", placeholder="예) 인공지능 윤리를 주제로 한 찬반 토론에서 사회자 역할을 맡아 갈등을 조율함.")
-        if st.button("✨ 세특 초안 생성하기", type="primary"):
-            if not st.session_state.get("api_key"): st.error("⚠️ 상단에 API 키를 먼저 입력해 주세요.")
-            elif stu_name and stu_activity:
-                with st.spinner("NEIS 양식에 맞게 문장을 작성 중입니다..."):
-                    prompt = f"당신은 고등학교 교사입니다. 학생 '{stu_name}'의 세특을 작성합니다. 수준: {stu_level} / 관찰: {stu_activity}. 명사형 종결어미(~함, ~임)를 사용하고, 500자 내외로 전문적이고 긍정적으로 작성하세요."
-                    try:
-                        st.markdown("<div class='custom-card'>" + call_gemini_robust(st.session_state.api_key, prompt) + "</div>", unsafe_allow_html=True)
-                    except Exception as e: st.error(str(e))
-
-    elif st.session_state.current_page == "알림장":
-        st.subheader("💌 학급 알림장/가정통신문 자동 생성기")
-        msg_context = st.text_area("전달할 핵심 내용 입력", placeholder="예) 내일 체험학습 감. 도시락 꼭 싸오고 8시 반까지 운동장 집합.")
-        if st.button("💌 알림장 문구 생성", type="primary"):
-            if not st.session_state.get("api_key"): st.error("⚠️ 상단에 API 키를 먼저 입력해 주세요.")
-            elif msg_context:
-                with st.spinner("정중한 문구로 변환 중입니다..."):
-                    prompt = f"다정하고 꼼꼼한 고등학교 담임교사입니다. 학부모님과 학생 단체 문자로 보낼 수 있게 알림장 형태로 다듬어주세요. 내용: {msg_context}."
-                    try:
-                        st.markdown("<div class='custom-card'>" + call_gemini_robust(st.session_state.api_key, prompt) + "</div>", unsafe_allow_html=True)
-                    except Exception as e: st.error(str(e))
-
-    # --------------------------------------------------------------------------------
-    # 🌟 [메뉴 5] 등록부 
-    # --------------------------------------------------------------------------------
-    elif st.session_state.current_page == "등록부":
-        st.subheader("📋 온라인 등록부 및 전자 서명 (HTML 인쇄 지원)")
-
-        with st.expander("⚙️ 연수 관리자 설정 (비밀번호: 1234)"):
-            if st.text_input("비밀번호", type="password", key="reg_pw") == "1234":
-                st.markdown("**새로운 연수 개설**")
-                c_new1, c_new2, c_new3 = st.columns([2, 1, 1])
-                with c_new1: new_title = st.text_input("연수명", key="new_title_input")
-                with c_new2: new_date = st.text_input("일시", placeholder="예) 10. 20. 15:00", key="new_date_input")
-                with c_new3: new_loc = st.text_input("장소", placeholder="예) 시청각실", key="new_loc_input")
-                
-                if st.button("➕ 연수 추가하기"):
-                    if new_title:
-                        st.session_state.training_data[new_title] = {"date": new_date, "loc": new_loc}
-                        save_training_data(st.session_state.training_data)
-                        
-                        st.success(f"'{new_title}' 연수가 성공적으로 추가되었습니다! (새로고침해도 지워지지 않습니다)")
-                        time.sleep(1)
-                        st.rerun()
-        
-        st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
-        selected_training = st.selectbox("📌 참여할 연수 선택", list(st.session_state.training_data.keys()))
-        
-        reg_date = st.session_state.training_data[selected_training]["date"]
-        reg_loc = st.session_state.training_data[selected_training]["loc"]
-        
-        st.info(f"📅 **일시:** {reg_date if reg_date else '미지정'} &nbsp;&nbsp;|&nbsp;&nbsp; 🏫 **장소:** {reg_loc if reg_loc else '미지정'}")
-        st.write("---")
-        
-        c1, c2, c3 = st.columns(3)
-        with c1: in_dept = st.text_input("소속", placeholder="예) 광영고")
-        with c2: in_pos = st.text_input("직위", placeholder="예) 교사")
-        with c3: in_name = st.text_input("이름", placeholder="예) 홍길동")
-        
-        st.write("✍️ **서명** - 마우스나 스마트폰 터치로 서명해 주세요.")
-        
-        canvas_result = st_canvas(
-            stroke_width=3, 
-            stroke_color="#000000", 
-            background_color="#ffffff", 
-            height=100, 
-            width=400, 
-            drawing_mode="freedraw", 
-            update_streamlit=True, 
-            return_image_data=True, 
-            key=f"sig_canvas_{st.session_state.canvas_key}"
-        )
-
-        if st.button("✅ 서명 완료 및 제출", type="primary", use_container_width=True):
-            if not in_name:
-                st.warning("이름을 입력하세요.")
-            elif canvas_result.image_data is None:
-                st.warning("⚠️ 서명을 그려주세요!")
-            else:
-                sig_base64 = ""
-                img_array = canvas_result.image_data
-                
-                if np.min(img_array[:, :, :3]) < 255:
-                    img_pil = Image.fromarray(img_array.astype('uint8'), 'RGBA')
-                    img_rgb = Image.new("RGB", img_pil.size, (255, 255, 255))
-                    img_rgb.paste(img_pil, mask=img_pil.split()[3])
-                    
-                    buffered = io.BytesIO()
-                    img_rgb.save(buffered, format="PNG")
-                    sig_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                    
-                    new_row = pd.DataFrame([{
-                        "연번": len(st.session_state.registry_df[st.session_state.registry_df["연수명"] == selected_training])+1, 
-                        "연수명": selected_training, 
-                        "일시": reg_date,
-                        "장소": reg_loc,
-                        "소속": in_dept, 
-                        "직위": in_pos, 
-                        "이름": in_name, 
-                        "서명 상태": "✅ 완료", 
-                        "서명 이미지": sig_base64, 
-                        "등록 일시": datetime.now().strftime("%m-%d %H:%M")
-                    }])
-                    
-                    st.session_state.registry_df = pd.concat([st.session_state.registry_df, new_row], ignore_index=True)
-                    save_registry(st.session_state.registry_df)
-                    
-                    st.success(f"{in_name} 선생님의 손글씨 서명이 완벽하게 등록되었습니다! (새로고침해도 보관됩니다)")
-                    st.session_state.canvas_key += 1
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.warning("⚠️ 서명이 인식되지 않았습니다. 캔버스에 펜으로 서명을 남겨주세요!")
-                    
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-        display_df = st.session_state.registry_df[st.session_state.registry_df["연수명"] == selected_training]
-        st.dataframe(display_df.drop(columns=["서명 이미지", "연수명", "일시", "장소"], errors="ignore"), hide_index=True, use_container_width=True)
-        
-        if not display_df.empty:
-            col_d1, col_d2 = st.columns(2)
-            with col_d1:
-                st.download_button("📥 엑셀(CSV) 다운로드", data=display_df.to_csv(index=False, encoding='utf-8-sig'), file_name=f"{selected_training}_등록부.csv", mime="text/csv", use_container_width=True)
-            
-            with col_d2:
-                rows_html = ""
-                for idx, row in display_df.iterrows():
-                    img_tag = f'<img src="data:image/png;base64,{row["서명 이미지"]}" style="height: 40px; max-width: 140px; object-fit: contain;"/>' if row.get("서명 이미지") else ""
-                    rows_html += f"<tr><td>{row['연번']}</td><td>{row['소속']}</td><td>{row['직위']}</td><td>{row['이름']}</td><td>{img_tag}</td></tr>"
-
-                html_registry = f"""<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<title>연수 등록부</title>
-<style>
-    @page {{ size: A4; margin: 20mm; }}
-    body {{ font-family: 'Malgun Gothic', sans-serif; line-height: 1.5; color: #000; }}
-    h1 {{ text-align: center; font-size: 26px; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 20px; letter-spacing: 2px; }}
-    .info-table {{ width: 100%; border: none; margin-bottom: 15px; font-size: 15px; font-weight: bold; }}
-    .info-table td {{ padding: 5px; border: none; }}
-    .reg-table {{ width: 100%; border-collapse: collapse; font-size: 14px; text-align: center; table-layout: fixed; }}
-    .reg-table th, .reg-table td {{ border: 1px solid #000; padding: 10px; vertical-align: middle; height: 45px; }}
-    .reg-table th {{ background-color: #f2f2f2; font-weight: bold; border: 1px solid #000; }}
-    .col-no {{ width: 8%; }}
-    .col-dept {{ width: 25%; }}
-    .col-pos {{ width: 15%; }}
-    .col-name {{ width: 20%; }}
-    .col-sig {{ width: 32%; }}
-    .print-btn {{ display: block; width: 200px; margin: 0 auto 20px auto; padding: 10px; background-color: #2b8a3e; color: white; text-align: center; cursor: pointer; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; }}
-    @media print {{ .print-btn {{ display: none; }} }}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>교무실 — 추가 기능 연동 안내</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.7/babel.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.577.0"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: "#6550bb",
+            ink: "#262635",
+            paper: "#f7f8fb",
+            line: "#e8e9ef"
+          },
+          fontFamily: {
+            sans: ["Pretendard Variable", "sans-serif"]
+          }
+        }
+      }
+    };
+  </script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+  <style>
+    body { margin: 0; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    :is(button, a, input):focus-visible {
+      outline: 2px solid #6550bb;
+      outline-offset: 4px;
+    }
+    pre { tab-size: 4; }
+    @media (prefers-reduced-motion: reduce) {
+      * { scroll-behavior: auto !important; }
+    }
+  </style>
 </head>
-<body>
-    <button class="print-btn" onclick="window.print()">🖨️ 서명 포함 등록부 인쇄</button>
-    <h1>연수(회의) 등록부</h1>
-    <table class="info-table">
-        <tr><td width="15%">연 수 명 :</td><td>{selected_training}</td></tr>
-        <tr><td>일 시 :</td><td>{reg_date}</td></tr>
-        <tr><td>장 소 :</td><td>{reg_loc}</td></tr>
-    </table>
-    <table class="reg-table">
-        <tr><th class="col-no">연번</th><th class="col-dept">소속</th><th class="col-pos">직위</th><th class="col-name">이름</th><th class="col-sig">서명</th></tr>
-        {rows_html}
-    </table>
+<body class="bg-paper font-sans text-ink">
+<div id="root"></div>
+
+<script type="text/babel">
+  import {
+    Layers, ArrowRight, Check, Copy, Download, File,
+    Database, Cloud, Lock, AlertCircle, ChevronRight,
+    Code2, CheckCircle, Info
+  } from 'lucide-react';
+
+  const { useState, useEffect } = React;
+
+  const backendCode = String.raw`import base64
+import binascii
+import io
+import json
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pdfplumber
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from PIL import Image, UnidentifiedImageError
+from pydantic import BaseModel, Field
+
+ROOT = Path(__file__).resolve().parent
+DB_PATH = ROOT / "classroom.db"
+
+app = FastAPI(title="교무실 추가 기능 API")
+
+# 개인 컴퓨터의 개발용 출처만 허용합니다.
+# CORS는 로그인이나 접근 권한을 대신하지 않습니다.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8501",
+        "http://localhost:8501",
+    ],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
+
+def connect():
+    db = sqlite3.connect(DB_PATH, timeout=15)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA foreign_keys = ON")
+    return db
+
+def initialize():
+    with connect() as db:
+        db.execute("PRAGMA journal_mode = WAL")
+        db.executescript("""
+        CREATE TABLE IF NOT EXISTS trainings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL UNIQUE,
+            date TEXT NOT NULL DEFAULT '',
+            location TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS registry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            training_id INTEGER NOT NULL,
+            department TEXT NOT NULL,
+            position TEXT NOT NULL,
+            name TEXT NOT NULL,
+            signature TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(training_id) REFERENCES trainings(id)
+        );
+        """)
+
+initialize()
+
+class TrainingInput(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    date: str = Field(default="", max_length=100)
+    location: str = Field(default="", max_length=200)
+
+class RegistryInput(BaseModel):
+    training_id: int = Field(gt=0)
+    department: str = Field(default="", max_length=100)
+    position: str = Field(default="", max_length=100)
+    name: str = Field(min_length=1, max_length=100)
+    signature: str = Field(min_length=1, max_length=700000)
+
+@app.get("/api/health")
+def health():
+    return {"ok": True, "storage": "SQLite"}
+
+@app.get("/api/trainings")
+def get_trainings():
+    with connect() as db:
+        rows = db.execute(
+            "SELECT * FROM trainings ORDER BY id DESC"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+@app.post("/api/trainings", status_code=201)
+def add_training(body: TrainingInput):
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(400, "연수명을 입력해 주세요.")
+    try:
+        with connect() as db:
+            cursor = db.execute(
+                "INSERT INTO trainings (title, date, location) VALUES (?, ?, ?)",
+                (title, body.date.strip(), body.location.strip()),
+            )
+            new_id = cursor.lastrowid
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, "같은 이름의 연수가 이미 있습니다.")
+    return {"id": new_id, "title": title}
+
+@app.post("/api/pdf-text")
+def extract_pdf(file: UploadFile = File(...)):
+    # 🌟 [최적화 반영] 동기 함수(def)로 변경하고, 파일 객체 직접 읽기로 변경 
+    # 최대 10MiB까지만 읽습니다.
+    try:
+        content = file.file.read(10 * 1024 * 1024 + 1)
+    finally:
+        file.file.close()
+
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(413, "PDF는 10MB 이하로 업로드해 주세요.")
+    if not content.startswith(b"%PDF-"):
+        raise HTTPException(400, "올바른 PDF 파일을 선택해 주세요.")
+
+    try:
+        # 개인용 예제입니다. 공개 운영에서는 PDF 분석을
+        # 별도 작업 프로세스로 분리하고 처리 시간도 제한하세요.
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
+            if len(pdf.pages) > 80:
+                raise HTTPException(400, "한 번에 80쪽 이하로 업로드해 주세요.")
+            pages = []
+            total_length = 0
+            for page in pdf.pages:
+                text = page.extract_text() or ""
+                total_length += len(text)
+                if total_length > 100000:
+                    raise HTTPException(
+                        400, "추출 분량이 큽니다. PDF를 나누어 올려 주세요."
+                    )
+                pages.append(text)
+            page_count = len(pdf.pages)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            400, "PDF를 읽지 못했습니다. 암호화 또는 파일 손상 여부를 확인하세요."
+        )
+
+    text = "\n\n".join(pages).strip()
+    if not text:
+        raise HTTPException(
+            422, "추출할 글자가 없습니다. 스캔 PDF는 별도 OCR 처리가 필요합니다."
+        )
+    return {"text": text, "pages": page_count}
+
+def validate_signature(value):
+    prefix = "data:image/png;base64,"
+    if value.startswith(prefix):
+        value = value[len(prefix):]
+
+    try:
+        raw = base64.b64decode(value, validate=True)
+        if not raw or len(raw) > 500000:
+            raise ValueError()
+
+        with Image.open(io.BytesIO(raw)) as image:
+            if image.format != "PNG":
+                raise ValueError()
+            if not (100 <= image.width <= 1600 and 50 <= image.height <= 800):
+                raise ValueError()
+            image.load()
+            rgba = image.convert("RGBA")
+            background = Image.new("RGBA", rgba.size, "white")
+            rgb = Image.alpha_composite(background, rgba).convert("RGB")
+            # 빈 캔버스에 가까운 이미지는 거절합니다.
+            dark_pixels = sum(
+                1 for r, g, b in rgb.getdata()
+                if min(r, g, b) < 180
+            )
+            if dark_pixels < 30:
+                raise ValueError()
+            output = io.BytesIO()
+            rgb.save(output, format="PNG")
+    except (
+        ValueError, binascii.Error, UnidentifiedImageError,
+        OSError, Image.DecompressionBombError
+    ):
+        raise HTTPException(
+            400, "서명을 확인할 수 없습니다. 흰 배경의 PNG 서명을 다시 제출하세요."
+        )
+    return base64.b64encode(output.getvalue()).decode("ascii")
+
+@app.post("/api/registry", status_code=201)
+def add_registry(body: RegistryInput):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "이름을 입력해 주세요.")
+
+    signature = validate_signature(body.signature)
+
+    with connect() as db:
+        training = db.execute(
+            "SELECT id FROM trainings WHERE id = ?",
+            (body.training_id,),
+        ).fetchone()
+        if training is None:
+            raise HTTPException(404, "해당 연수를 찾을 수 없습니다.")
+
+        cursor = db.execute(
+            """
+            INSERT INTO registry
+              (training_id, department, position, name, signature, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                body.training_id,
+                body.department.strip(),
+                body.position.strip(),
+                name,
+                signature,
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        record_id = cursor.lastrowid
+
+    return {"id": record_id, "message": "등록했습니다."}
+
+@app.get("/api/registry")
+def get_registry(training_id: int):
+    if training_id < 1:
+        raise HTTPException(400, "연수 번호를 확인해 주세요.")
+    with connect() as db:
+        # 목록에서는 개인정보 노출과 전송량을 줄이기 위해
+        # 서명 이미지 본문을 반환하지 않습니다.
+        rows = db.execute(
+            """
+            SELECT id, training_id, department, position, name, created_at
+            FROM registry WHERE training_id = ? ORDER BY id
+            """,
+            (training_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+@app.get("/api/registry/{record_id}/signature")
+def get_signature(record_id: int):
+    # 공개 운영 시 관리자 권한이 필요한 경로입니다.
+    with connect() as db:
+        row = db.execute(
+            "SELECT signature FROM registry WHERE id = ?",
+            (record_id,),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(404, "등록 기록이 없습니다.")
+    return {"signature": "data:image/png;base64," + row["signature"]}
+`;
+
+  const migrationCode = String.raw`# 기존 파일을 읽어 새 데이터베이스에 한 번만 옮기는 스크립트입니다.
+# 원본 training_data.json, registry.csv는 수정하지 않습니다.
+# classroom_api.py와 같은 폴더에 저장한 뒤 실행하세요.
+
+import base64
+import csv
+import json
+import sqlite3
+from pathlib import Path
+
+from classroom_api import DB_PATH, initialize
+
+ROOT = Path(__file__).resolve().parent
+initialize()
+
+with sqlite3.connect(DB_PATH) as db:
+    db.execute("PRAGMA foreign_keys = ON")
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS migrations (
+            name TEXT PRIMARY KEY
+        )
+    """)
+    if db.execute(
+        "SELECT 1 FROM migrations WHERE name = ?",
+        ("legacy-files-v1",)
+    ).fetchone():
+        raise SystemExit("이미 이전을 완료했습니다. 중복 실행을 중단합니다.")
+
+    def ensure_training(title, date="", location=""):
+        db.execute(
+            "INSERT OR IGNORE INTO trainings (title, date, location) VALUES (?, ?, ?)",
+            (title, date, location),
+        )
+        return db.execute(
+            "SELECT id FROM trainings WHERE title = ?", (title,)
+        ).fetchone()[0]
+
+    training_file = ROOT / "training_data.json"
+    registry_file = ROOT / "registry.csv"
+
+    if not training_file.exists() and not registry_file.exists():
+        raise SystemExit("이전할 파일이 없습니다. 기존 파일을 같은 폴더에 복사하세요.")
+
+    if training_file.exists():
+        data = json.loads(training_file.read_text(encoding="utf-8"))
+        for title, detail in data.items():
+            ensure_training(
+                title, detail.get("date", ""), detail.get("loc", "")
+            )
+
+    count = 0
+    if registry_file.exists():
+        with registry_file.open(encoding="utf-8-sig", newline="") as file:
+            for row in csv.DictReader(file):
+                title = row.get("연수명", "").strip()
+                name = row.get("이름", "").strip()
+                if not title or not name:
+                    raise ValueError("연수명 또는 이름이 없는 행이 있습니다.")
+
+                signature = row.get("서명 이미지", "")
+                if signature:
+                    base64.b64decode(signature, validate=True)
+
+                training_id = ensure_training(
+                    title, row.get("일시", ""), row.get("장소", "")
+                )
+                db.execute(
+                    """
+                    INSERT INTO registry
+                      (training_id, department, position, name, signature, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        training_id,
+                        row.get("소속", ""),
+                        row.get("직위", ""),
+                        name,
+                        signature,
+                        row.get("등록 일시", ""),
+                    ),
+                )
+                count += 1
+
+    db.execute(
+        "INSERT INTO migrations (name) VALUES (?)",
+        ("legacy-files-v1",),
+    )
+
+print(f"이전을 완료했습니다. 등록 기록 {count}건")
+`;
+
+  const streamlitCode = String.raw`# 기존 Streamlit 파일에 통합할 연결 함수입니다.
+# 기존 set_page_config 호출은 그대로 하나만 유지하세요.
+import requests
+import streamlit as st
+
+CLASSROOM_API = "http://127.0.0.1:8001"
+
+def classroom_request(method, path, **kwargs):
+    try:
+        response = requests.request(
+            method,
+            CLASSROOM_API + path,
+            timeout=(5, 90),
+            **kwargs
+        )
+        if not response.ok:
+            try:
+                detail = response.json().get("detail", "요청에 실패했습니다.")
+            except ValueError:
+                detail = "서버 응답을 읽지 못했습니다."
+            raise RuntimeError(str(detail))
+        return response.json()
+    except requests.RequestException as error:
+        raise RuntimeError(
+            "추가 기능 서버에 연결하지 못했습니다. 8001번 서버를 확인하세요."
+        ) from error
+
+# 1. 기존 load_training_data() 대신 API 조회
+try:
+    trainings = classroom_request("GET", "/api/trainings")
+except RuntimeError as error:
+    st.error(str(error))
+    st.stop()
+
+if not trainings:
+    st.info("먼저 API에 연수를 등록해 주세요.")
+else:
+    selected = st.selectbox(
+        "연수 선택",
+        trainings,
+        format_func=lambda item: item["title"],
+    )
+
+    # 2. 기존 load_registry() 대신 선택 연수의 기록 조회
+    try:
+        records = classroom_request(
+            "GET",
+            "/api/registry",
+            params={"training_id": selected["id"]},
+        )
+        st.dataframe(records, use_container_width=True)
+    except RuntimeError as error:
+        st.error(str(error))
+
+# 3. 기존 연수 추가 버튼에서 호출
+# classroom_request("POST", "/api/trainings", json={
+#     "title": new_title,
+#     "date": new_date,
+#     "location": new_loc,
+# })
+
+# 4. 기존 서명 처리에서 만든 sig_base64를 API에 저장
+# 기존 save_registry(df)를 함께 호출하지 마세요.
+#
+# classroom_request("POST", "/api/registry", json={
+#     "training_id": selected["id"],
+#     "department": in_dept,
+#     "position": in_pos,
+#     "name": in_name,
+#     "signature": sig_base64,
+# })
+# st.rerun()
+
+# 5. 기존 PDF 업로더의 uploaded_file을 API로 전달
+#
+# result = classroom_request(
+#     "POST",
+#     "/api/pdf-text",
+#     files={
+#         "file": (
+#             uploaded_file.name,
+#             uploaded_file.getvalue(),
+#             "application/pdf",
+#         )
+#     },
+# )
+# st.session_state.extracted_text = result["text"]
+#
+# 이후 기존 Gemini 분석 프롬프트에 extracted_text를 사용하세요.
+`;
+
+  const reactCode = String.raw`// 기존 HTML의 text/babel 안, App 바깥에 추가할 연결 함수입니다.
+// 기존 apiBase는 Gemini용 8000번 서버이므로 바꾸지 않습니다.
+const CLASSROOM_API = "http://127.0.0.1:8001";
+
+async function classroomRequest(path, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90000);
+  try {
+    const response = await fetch(CLASSROOM_API + path, {
+      ...options,
+      signal: controller.signal,
+    });
+    let result;
+    try {
+      result = await response.json();
+    } catch {
+      throw new Error("서버 응답 형식을 확인해 주세요.");
+    }
+    if (!response.ok) {
+      throw new Error(
+        typeof result.detail === "string"
+          ? result.detail
+          : "요청 내용을 확인해 주세요."
+      );
+    }
+    return result;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function createTraining(title, date, location) {
+  return classroomRequest("/api/trainings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, date, location }),
+  });
+}
+
+function loadTrainings() {
+  return classroomRequest("/api/trainings");
+}
+
+function loadRegistry(trainingId) {
+  return classroomRequest(
+    "/api/registry?training_id=" + encodeURIComponent(trainingId)
+  );
+}
+
+function uploadPdf(file) {
+  const form = new FormData();
+  form.append("file", file);
+  // FormData에서는 Content-Type을 직접 지정하지 않습니다.
+  return classroomRequest("/api/pdf-text", {
+    method: "POST",
+    body: form,
+  });
+}
+
+function submitSignature(trainingId, department, position, name, canvas) {
+  return classroomRequest("/api/registry", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      training_id: trainingId,
+      department,
+      position,
+      name,
+      signature: canvas.toDataURL("image/png"),
+    }),
+  });
+}
+
+// App 내부의 이벤트 핸들러에서 호출하는 예:
+// try {
+//   const result = await uploadPdf(selectedFile);
+//   setDraft(result.text);
+//   setToast(result.pages + "쪽의 텍스트를 추출했습니다.");
+// } catch (error) {
+//   setToast(error.message);
+// }
+//
+// 주의:
+// submitSignature 함수는 서명판 UI를 만들지 않습니다.
+// canvas ref와 포인터 이벤트를 가진 서명 컴포넌트가 별도로 필요합니다.
+// 제출 중에는 버튼을 비활성화하여 중복 제출을 막으세요.
+`;
+
+  const signatureCode = String.raw`// 기존 React 코드와 같은 text/babel 안에 추가하세요.
+// React.useRef 등을 직접 사용하므로 별도 훅 import가 필요하지 않습니다.
+
+function SignaturePad({ onSubmit }) {
+  const canvasRef = React.useRef(null);
+  const drawingRef = React.useRef(false);
+  const lastRef = React.useRef(null);
+  const hasInkRef = React.useRef(false);
+  const [busy, setBusy] = React.useState(false);
+  const [message, setMessage] = React.useState("");
+
+  function clear() {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    hasInkRef.current = false;
+    setMessage("");
+  }
+
+  React.useEffect(() => {
+    clear();
+  }, []);
+
+  function point(event) {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (event.clientX - rect.left) * canvas.width / rect.width,
+      y: (event.clientY - rect.top) * canvas.height / rect.height,
+    };
+  }
+
+  function start(event) {
+    if (busy) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const canvas = canvasRef.current;
+    canvas.setPointerCapture(event.pointerId);
+    drawingRef.current = true;
+    lastRef.current = point(event);
+  }
+
+  function move(event) {
+    if (!drawingRef.current || busy) return;
+    const next = point(event);
+    const ctx = canvasRef.current.getContext("2d");
+    ctx.strokeStyle = "#262635";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(lastRef.current.x, lastRef.current.y);
+    ctx.lineTo(next.x, next.y);
+    ctx.stroke();
+    lastRef.current = next;
+    hasInkRef.current = true;
+  }
+
+  function stop() {
+    drawingRef.current = false;
+    lastRef.current = null;
+  }
+
+  async function submit() {
+    if (!hasInkRef.current) {
+      setMessage("서명을 먼저 작성해 주세요.");
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    try {
+      await onSubmit(canvasRef.current);
+      clear();
+      setMessage("서명을 등록했습니다.");
+    } catch (error) {
+      setMessage(error.message || "등록에 실패했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <p id="signature-help" className="text-sm text-slate-600">
+        마우스나 손가락으로 서명해 주세요.
+        캔버스 입력이 어려운 경우 담당자에게 대체 등록을 요청하세요.
+      </p>
+      <canvas
+        ref={canvasRef}
+        width={600}
+        height={180}
+        aria-label="서명 입력 영역"
+        aria-describedby="signature-help"
+        className="w-full touch-none rounded-xl border border-slate-300 bg-white"
+        onPointerDown={start}
+        onPointerMove={move}
+        onPointerUp={stop}
+        onPointerCancel={stop}
+        onLostPointerCapture={stop}
+      />
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={clear}
+          className="rounded-lg border px-4 py-2 disabled:opacity-50"
+        >
+          지우기
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={submit}
+          className="rounded-lg bg-brand px-4 py-2 text-white disabled:opacity-50"
+        >
+          {busy ? "등록 중…" : "서명 제출"}
+        </button>
+      </div>
+      <p role="status" className="text-sm text-slate-600">{message}</p>
+    </div>
+  );
+}
+
+// 온라인 등록부 화면에 배치하는 예:
+// selectedTraining은 API에서 조회한 연수 객체입니다.
+// department, position, name은 폼 입력 상태입니다.
+//
+// <SignaturePad onSubmit={async canvas => {
+//   await submitSignature(
+//     selectedTraining.id, department, position, name, canvas
+//   );
+//   const records = await loadRegistry(selectedTraining.id);
+//   setRegistry(records);
+// }} />
+`;
+
+  const commands = String.raw`# 1. 추가 패키지 설치
+python -m pip install fastapi uvicorn python-multipart pdfplumber pillow requests
+
+# 2. 기존 파일 이전 — 서버 실행 전 한 번만 실행
+# training_data.json, registry.csv를 같은 폴더에 복사한 경우에만 실행
+python migrate_legacy.py
+
+# 3. 추가 API 서버 실행
+python -m uvicorn classroom_api:app --host 127.0.0.1 --port 8001
+
+# 기존 AI 서버(8000번)와 Streamlit은 다른 터미널에서 계속 실행합니다.
+`;
+
+  const tabs = [
+    { id: "overview", label: "연결 구조", icon: Layers },
+    { id: "server", label: "공유 API 서버", icon: Database },
+    { id: "streamlit", label: "Streamlit 연결", icon: Cloud },
+    { id: "react", label: "React 연결", icon: Code2 },
+    { id: "migration", label: "데이터 이전", icon: File }
+  ];
+
+  function downloadFile(filename, content) {
+    const url = URL.createObjectURL(
+      new Blob([content], { type: "text/plain;charset=utf-8" })
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  function CodeBlock({ title, code, filename, notify }) {
+    async function copy() {
+      try {
+        await navigator.clipboard.writeText(code);
+        notify("복사했습니다.");
+      } catch {
+        notify("복사 권한이 없습니다. 다운로드를 이용해 주세요.");
+      }
+    }
+    return (
+      <section className="min-w-0 overflow-hidden rounded-xl border border-line">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 px-4 py-3">
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <div className="flex gap-3">
+            <button onClick={copy} className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-brand">
+              <Copy className="h-3.5 w-3.5" aria-hidden="true" />복사
+            </button>
+            {filename && (
+              <button onClick={() => downloadFile(filename, code)} className="flex items-center gap-1.5 text-xs font-medium text-brand">
+                <Download className="h-3.5 w-3.5" aria-hidden="true" />다운로드
+              </button>
+            )}
+          </div>
+        </div>
+        <pre className="max-h-[520px] overflow-auto bg-[#252536] p-5 text-xs leading-6 text-slate-100">
+          <code>{code}</code>
+        </pre>
+      </section>
+    );
+  }
+
+  function Callout({ title, children, warning = false }) {
+    return (
+      <div className={`flex gap-3 rounded-xl border p-4 ${warning ? "border-amber-200 bg-amber-50" : "border-violet-100 bg-violet-50"}`}>
+        {warning
+          ? <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+          : <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden="true" />}
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <div className="mt-2 text-sm leading-7 text-slate-600">{children}</div>
+        </div>
+      </div>
+    );
+  }
+
+  function App() {
+    const [active, setActive] = useState("overview");
+    const [toast, setToast] = useState("");
+
+    useEffect(() => {
+      if (!toast) return;
+      const timer = setTimeout(() => setToast(""), 3000);
+      return () => clearTimeout(timer);
+    }, [toast]);
+
+    const codeProps = { notify: setToast };
+
+    return (
+      <div>
+        <header className="border-b border-line bg-white">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-5 md:px-8">
+            <a href="#main" className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand text-white">
+                <Layers className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <span>
+                <span className="block text-lg font-bold">교무실<span className="text-brand">.</span></span>
+                <span className="text-xs text-slate-500">추가 기능 연동 안내</span>
+              </span>
+            </a>
+            <span className="rounded-full border border-line bg-paper px-3 py-1.5 text-xs text-slate-600">
+              기존 앱과 별도로 보는 안내 문서
+            </span>
+          </div>
+        </header>
+
+        <main id="main" className="mx-auto max-w-6xl px-5 py-10 md:px-8 md:py-14">
+          <div className="mb-8 max-w-3xl">
+            <p className="mb-3 text-xs font-semibold tracking-wide text-brand">Streamlit · React · FastAPI</p>
+            <h1 className="text-3xl font-bold leading-tight tracking-tight md:text-4xl">
+              화면은 둘이어도,<br className="sm:hidden" /> 데이터는 하나로.
+            </h1>
+            <p className="mt-4 text-sm leading-8 text-slate-500 md:text-base">
+              PDF 텍스트 추출과 전자서명은 서버 기능으로 분리하고,
+              연수·등록부는 같은 데이터베이스에 저장합니다.
+              기존 AI 서버와 업무 화면을 통째로 바꿀 필요는 없습니다.
+            </p>
+          </div>
+
+          <div className="grid items-start gap-6 lg:grid-cols-[210px_minmax(0,1fr)]">
+            <nav className="flex flex-wrap gap-2 lg:sticky lg:top-6 lg:flex-col" aria-label="연동 안내">
+              {tabs.map((tab, index) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActive(tab.id)}
+                  aria-pressed={active === tab.id}
+                  className={`flex items-center gap-3 rounded-xl px-4 py-3 text-left text-sm ${active === tab.id ? "bg-brand font-semibold text-white" : "border border-line bg-white text-slate-600 hover:bg-slate-50"}`}
+                >
+                  <tab.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>{index + 1}. {tab.label}</span>
+                </button>
+              ))}
+            </nav>
+
+            <article className="min-w-0 rounded-2xl border border-line bg-white p-5 md:p-7">
+              {active === "overview" && (
+                <div className="space-y-7">
+                  <div>
+                    <h2 className="text-xl font-bold">무엇을 어디에 연결하나요?</h2>
+                    <p className="mt-2 text-sm leading-7 text-slate-500">
+                      기존 코드에서 별도 연동이 필요한 세 부분을 나누면 다음과 같습니다.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {[
+                      ["PDF 분석", "PDF 업로드 → 글자 추출 → 기존 AI 생성 요청"],
+                      ["전자서명", "서명판 → PNG 이미지 → 등록부 API 저장"],
+                      ["데이터 공유", "React·Streamlit → 같은 API → SQLite"]
+                    ].map(([title, text]) => (
+                      <div key={title} className="rounded-xl border border-line bg-paper p-4">
+                        <h3 className="text-sm font-semibold">{title}</h3>
+                        <p className="mt-2 text-xs leading-6 text-slate-500">{text}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <section className="rounded-xl border border-line p-5">
+                    <h3 className="mb-4 text-sm font-semibold">서버 역할을 분리합니다</h3>
+                    <div className="space-y-3">
+                      {[
+                        ["8000번", "기존 AI 서버", "Gemini 초안 생성과 HTML 제공"],
+                        ["8001번", "추가 기능 서버", "PDF 추출·연수·등록부·서명 저장"],
+                        ["8501번", "기존 Streamlit", "Python 업무 화면"]
+                      ].map(([port, title, text]) => (
+                        <div key={port} className="flex flex-wrap items-center gap-3 rounded-lg bg-paper p-3">
+                          <span className="rounded bg-white px-2 py-1 text-xs font-semibold text-brand">{port}</span>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">{title}</p>
+                            <p className="mt-1 text-xs text-slate-500">{text}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <Callout title="핵심은 저장 경로를 하나로 바꾸는 것입니다">
+                    기존 Streamlit의 <code>save_registry()</code>와 React의
+                    브라우저 저장을 그대로 둔 채 서버만 추가하면 데이터는 공유되지 않습니다.
+                    연수·등록부 화면의 조회와 저장을 양쪽 모두 API 호출로 바꿔야 합니다.
+                    할 일·출결·상담 메모는 이번 서버 예제의 연결 범위에 포함하지 않았습니다.
+                  </Callout>
+
+                  <div>
+                    <h3 className="mb-3 text-sm font-semibold">권장 적용 순서</h3>
+                    <ol className="space-y-3">
+                      {[
+                        "원본 Python 파일과 JSON·CSV를 먼저 백업합니다.",
+                        "공유 API 파일을 저장하고 기존 데이터를 한 번 이전합니다.",
+                        "8001번 서버를 실행해 /docs에서 API를 확인합니다.",
+                        "Streamlit 등록부를 API 조회·저장 방식으로 바꿉니다.",
+                        "React 등록부와 PDF 업로드·서명 UI를 연결합니다."
+                      ].map((text, i) => (
+                        <li key={text} className="flex gap-3 text-sm leading-7 text-slate-600">
+                          <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-50 text-xs font-semibold text-brand">{i + 1}</span>
+                          {text}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                  <button onClick={() => setActive("server")} className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-medium text-white">
+                    서버 코드부터 보기<ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
+              )}
+
+              {active === "server" && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-bold">추가 기능 API 서버</h2>
+                    <p className="mt-2 text-sm leading-7 text-slate-500">
+                      기존 backend.py는 그대로 두고, 아래 파일을
+                      classroom_api.py라는 이름으로 같은 프로젝트 폴더에 저장하세요.
+                      데이터는 이 파일 옆의 classroom.db에 저장됩니다.
+                    </p>
+                  </div>
+                  <Callout title="개인 컴퓨터에서만 실행하는 예제입니다" warning>
+                    로그인·권한 확인이 없는 로컬 개발용입니다.
+                    반드시 127.0.0.1에 바인딩하고 인터넷에 직접 공개하지 마세요.
+                    서명 이미지는 암호학적 전자서명이나 본인 인증을 제공하지 않습니다.
+                  </Callout>
+                  <CodeBlock title="classroom_api.py · 전체 서버 코드" code={backendCode} filename="classroom_api.py" {...codeProps} />
+                  <CodeBlock title="설치·실행 명령" code={commands} filename="실행_안내.txt" {...codeProps} />
+                  <div className="rounded-xl border border-line p-4">
+                    <h3 className="text-sm font-semibold">실행 후 확인할 주소</h3>
+                    <a href="http://127.0.0.1:8001/docs" target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-2 break-all text-sm text-brand underline">
+                      http://127.0.0.1:8001/docs<ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    </a>
+                    <p className="mt-3 text-xs leading-6 text-slate-500">
+                      이 안내 페이지가 서버를 실행하지는 않습니다. Python 파일을 저장하고 터미널에서 실행해야 합니다.
+                      API 문서에서 연수를 하나 등록한 뒤 등록부 조회와 PDF 업로드를 확인하세요.
+                    </p>
+                  </div>
+                  <Callout title="PDF 추출과 AI 분석은 서로 다른 단계입니다">
+                    이 API는 글자만 추출합니다. 결과의 text를 기존 8000번 서버의
+                    /api/generate에 보내야 AI 분석이 됩니다.
+                    기존 생성 API의 입력 제한은 20,000자이므로 긴 PDF는 단원별로
+                    나누거나 분할 요약 기능을 추가해야 합니다. 스캔 PDF는 별도 OCR이 필요합니다.
+                  </Callout>
+                </div>
+              )}
+
+              {active === "streamlit" && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-bold">기존 Streamlit에서 호출하기</h2>
+                    <p className="mt-2 text-sm leading-7 text-slate-500">
+                      requests로 같은 API를 호출합니다. 기존 전체 파일을 아래 코드로
+                      덮어쓰지 말고, 연결 함수와 각 버튼의 저장 부분을 통합하세요.
+                    </p>
+                  </div>
+                  <CodeBlock title="Streamlit 연결 함수와 적용 위치" code={streamlitCode} filename="streamlit_api_example.py" {...codeProps} />
+                  <section className="space-y-3 rounded-xl border border-line p-5">
+                    <h3 className="text-sm font-semibold">기존 코드에서 바꿀 부분</h3>
+                    {[
+                      ["load_training_data()", "GET /api/trainings로 교체"],
+                      ["save_training_data()", "POST /api/trainings로 교체"],
+                      ["load_registry()", "GET /api/registry로 교체"],
+                      ["save_registry(df)", "POST /api/registry로 교체"],
+                      ["pdfplumber.open(...)", "POST /api/pdf-text로 교체 가능"]
+                    ].map(([before, after]) => (
+                      <div key={before} className="flex flex-wrap items-center gap-2 border-t border-line pt-3 text-xs">
+                        <code className="text-slate-600">{before}</code>
+                        <ArrowRight className="h-3 w-3 text-slate-400" aria-hidden="true" />
+                        <span className="font-medium text-brand">{after}</span>
+                      </div>
+                    ))}
+                  </section>
+                  <Callout title="session_state에 최초 한 번만 불러오면 최신 자료가 보이지 않습니다">
+                    React에서 추가된 기록을 확인하려면 조회할 때 API를 다시 호출하거나
+                    새로고침 버튼을 제공하세요. 오래된 session_state의 데이터프레임을
+                    서버에 통째로 다시 저장하면 다른 화면에서 추가한 자료를 덮어쓸 수 있습니다.
+                  </Callout>
+                  <p className="text-sm leading-7 text-slate-600">
+                    기존 CSV 다운로드는 API에서 받은 목록으로 데이터프레임을 만들면 됩니다.
+                    서명 포함 인쇄에는 각 기록의
+                    <code className="mx-1 break-all">/api/registry/기록번호/signature</code>
+                    응답을 추가로 사용하세요. 제공 예제의 서명 조회에는 권한 검사가 없으므로 공개 배포하면 안 됩니다.
+                  </p>
+                </div>
+              )}
+
+              {active === "react" && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-bold">기존 React 화면에서 호출하기</h2>
+                    <p className="mt-2 text-sm leading-7 text-slate-500">
+                      기존 8000번 AI 서버 주소는 바꾸지 않습니다.
+                      추가 기능 호출에만 8001번 주소를 사용하세요.
+                    </p>
+                  </div>
+                  <CodeBlock title="API 연결 함수 · 기존 text/babel 안에 추가" code={reactCode} filename="classroom_api_helpers.jsx" {...codeProps} />
+                  <CodeBlock title="마우스·터치 서명 입력 컴포넌트" code={signatureCode} filename="SignaturePad.jsx" {...codeProps} />
+                  <Callout title="이 코드는 연결 부품이지 기존 앱 전체를 교체하는 파일이 아닙니다">
+                    연수 선택 상태, 이름·소속 입력 상태, 등록부 목록 상태를 기존 App 안에
+                    만들고 연결해야 합니다. 현재 ‘온라인 등록부’의 CSV 양식 다운로드 영역을
+                    연수 선택·입력 폼·SignaturePad·등록 목록으로 바꾸는 작업이 필요합니다.
+                  </Callout>
+                  <section className="rounded-xl border border-line p-5">
+                    <h3 className="mb-3 text-sm font-semibold">React 화면 연결 순서</h3>
+                    <ol className="list-decimal space-y-2 pl-5 text-sm leading-7 text-slate-600">
+                      <li>등록부 메뉴 진입 시 loadTrainings()로 연수 목록을 가져옵니다.</li>
+                      <li>연수 선택 시 loadRegistry(연수번호)로 등록 목록을 표시합니다.</li>
+                      <li>이름·소속·직위를 입력하고 SignaturePad에서 서명합니다.</li>
+                      <li>저장 성공 후에만 입력 내용을 정리하고 목록을 다시 조회합니다.</li>
+                      <li>PDF는 파일 입력으로 선택한 File 객체를 uploadPdf()에 전달합니다.</li>
+                    </ol>
+                  </section>
+                  <Callout title="HTML 파일을 더블클릭해서 열지 마세요" warning>
+                    기존 서버의 http://127.0.0.1:8000/app에서 여세요.
+                    file:// 출처는 예제의 CORS 허용 대상이 아닙니다.
+                    다른 개발 포트를 사용한다면 classroom_api.py의 허용 출처에
+                    실제 주소를 정확히 추가해야 합니다.
+                  </Callout>
+                </div>
+              )}
+
+              {active === "migration" && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-bold">기존 JSON·CSV를 한 번만 이전하기</h2>
+                    <p className="mt-2 text-sm leading-7 text-slate-500">
+                      새 서버는 SQLite를 사용합니다. 기존 파일은 자동 연결되지 않으므로
+                      아래 스크립트로 이전한 뒤 API 저장 방식으로 전환하세요.
+                    </p>
+                  </div>
+                  <Callout title="이전 전에 원본 파일을 백업하세요" warning>
+                    기존 Streamlit과 추가 API 서버를 멈추고 진행하세요.
+                    training_data.json과 registry.csv를 classroom_api.py 옆에 복사합니다.
+                    스크립트는 원본 파일을 수정하지 않으며 완료 여부를 기록해 중복 실행을 막습니다.
+                  </Callout>
+                  <CodeBlock title="migrate_legacy.py · 일회성 이전 스크립트" code={migrationCode} filename="migrate_legacy.py" {...codeProps} />
+                  <CodeBlock title="이전 실행" code={"python migrate_legacy.py"} {...codeProps} />
+                  <section className="rounded-xl border border-line p-5">
+                    <h3 className="mb-4 text-sm font-semibold">전환 완료 확인</h3>
+                    <ul className="space-y-3">
+                      {[
+                        "기존 연수명과 등록 건수가 API 조회 결과와 같은지 확인합니다.",
+                        "Streamlit에서 추가한 기록이 React에서도 조회되는지 확인합니다.",
+                        "React에서 등록한 서명이 Streamlit 인쇄에 표시되는지 확인합니다.",
+                        "기존 CSV·JSON 쓰기 함수는 더 이상 호출하지 않습니다.",
+                        "브라우저 할 일·출결 데이터는 여전히 별도라는 점을 구분합니다."
+                      ].map(text => (
+                        <li key={text} className="flex gap-2 text-sm leading-7 text-slate-600">
+                          <CheckCircle className="mt-1.5 h-4 w-4 shrink-0 text-brand" aria-hidden="true" />{text}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                  <Callout title="여러 선생님이 함께 사용하려면 추가 설계가 필요합니다">
+                    이 예제는 개인용입니다. 실제 배포에서는 HTTPS, 로그인, 학급별 접근 권한,
+                    관리자 전용 등록부 조회, 파일 처리 제한, 백업·보존·삭제 정책이 필요합니다.
+                    서버가 여러 대이거나 저장 공간이 초기화되는 환경에서는 로컬 SQLite 대신
+                    PostgreSQL 같은 영속 저장소를 권장합니다.
+                    Streamlit Community Cloud에 FastAPI가 함께 자동 실행되는 것은 아닙니다.
+                  </Callout>
+                </div>
+              )}
+            </article>
+          </div>
+
+          <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5 text-xs text-slate-500">
+            <span>교무실 · 추가 기능 연동 안내</span>
+            <span className="flex items-center gap-1.5">
+              <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+              실제 학생 자료 연결 전 접근 권한부터 확인하세요
+            </span>
+          </footer>
+        </main>
+
+        <div aria-live="polite" className="pointer-events-none fixed bottom-5 left-1/2 z-50 max-w-[90vw] -translate-x-1/2">
+          {toast && (
+            <div className="flex items-center gap-2 rounded-xl bg-ink px-5 py-3 text-sm text-white shadow-lg">
+              <Check className="h-4 w-4 shrink-0" aria-hidden="true" />{toast}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
 </body>
-</html>"""
-                st.download_button("🖨️ 등록부 인쇄 (손글씨 포함 HTML)", data=html_registry.encode('utf-8'), file_name=f"{selected_training}_등록부.html", mime="text/html", type="primary", use_container_width=True)
-
-# ==========================================
-# [오른쪽 20%] 깔끔해진 우측 정보 패널
-# ==========================================
-with col_info:
-    st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
-    st.markdown("#### 🌤️ 오늘의 날씨")
-    st.markdown("**전남 광양시 중마동**")
-    st.markdown("<h2 style='margin:0; color:#ffb3c6;'>18°C / 맑음</h2>", unsafe_allow_html=True)
-    st.caption("미세먼지: 좋음 🟢 | 강수확률: 0%")
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
-    st.markdown("#### 💡 에듀테크 꿀팁")
-    st.markdown("**Canva(캔바) 업데이트**")
-    st.write("새로운 '매직스튜디오' 기능으로 텍스트만 입력하면 수업용 슬라이드 배경이 자동 생성됩니다.")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
-    st.markdown("#### 📅 주요 일정")
-    st.write("• **10/14:** 국어교육연구회 공개수업")
-    st.write("• **10월 3주차:** 학생 세특 초안 작성")
-    st.write("• **1월:** 나고야 가족 겨울 여행 준비")
-    st.markdown("</div>", unsafe_allow_html=True)
+</html>
